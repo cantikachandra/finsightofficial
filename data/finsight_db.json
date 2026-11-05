@@ -1,0 +1,527 @@
+{
+  "users": [
+    {
+      "id": "user_anonymous",
+      "email": "anonymous@finsight.id",
+      "passwordHash": "anonymous123",
+      "fullName": "Anonymous",
+      "businessName": "Usaha Mandiri (Anonymous)",
+      "businessType": "Kuliner & Usaha Ritel",
+      "phone": "081234567890",
+      "city": "Indonesia",
+      "qrisMerchantId": "NMID-ID102008492019",
+      "isVerified": true,
+      "role": "owner",
+      "createdAt": "2026-09-05T15:00:23.404Z"
+    },
+    {
+      "id": "user_cantika_real",
+      "email": "cantikachandra61@gmail.com",
+      "passwordHash": "cantika123",
+      "fullName": "Cantika Chandra Winata",
+      "businessName": "Cantika Kitchen & Coffee",
+      "businessType": "F&B dan Bakery",
+      "phone": "081398765432",
+      "city": "Surabaya",
+      "qrisMerchantId": "NMID-ID202599182741",
+      "isVerified": true,
+      "role": "owner",
+      "createdAt": "2026-11-04T15:00:23.404Z"
+    },
+    {
+      "id": "usr_1793805154885",
+      "email": "test.baru@gmail.com",
+      "passwordHash": "mypassword123",
+      "fullName": "Budi Santoso",
+      "businessName": "Warung Berkah Budi",
+      "businessType": "Kuliner / Ritel",
+      "phone": "",
+      "city": "Indonesia",
+      "qrisMerchantId": "NMID-ID525299651246",
+      "isVerified": true,
+      "role": "owner",
+      "createdAt": "2026-11-04T15:12:34.885Z"
+    },
+    {
+      "id": "usr_1793805916259",
+      "email": "test.verif@gmail.com",
+      "passwordHash": "testpassword123",
+      "fullName": "Test Verif User",
+      "businessName": "Usaha Saya",
+      "businessType": "Kuliner / Ritel",
+      "phone": "",
+      "city": "Indonesia",
+      "qrisMerchantId": "NMID-ID309482748341",
+      "isVerified": true,
+      "role": "owner",
+      "createdAt": "2026-11-04T15:25:16.259Z"
+    }
+  ],
+  "emailVerifications": [
+    {
+      "id": "ev_init_cantika",
+      "email": "cantikachandra61@gmail.com",
+      "code": "582914",
+      "purpose": "registration",
+      "sentAt": "2026-11-04T15:00:23.404Z",
+      "expiresAt": "2026-11-05T15:00:23.404Z",
+      "isUsed": true
+    },
+    {
+      "id": "ev_1793805916260",
+      "email": "test.verif@gmail.com",
+      "code": "425997",
+      "purpose": "registration",
+      "sentAt": "2026-11-04T15:25:16.260Z",
+      "expiresAt": "2026-11-04T15:55:16.260Z",
+      "isUsed": false
+    }
+  ],
+  "transactions": [
+    {
+      "id": "tx_01",
+      "userId": "user_anonymous",
+      "date": "2026-11-04",
+      "time": "14:20",
+      "description": "Penjualan QRIS Siang (12 Pesanan Kopi Susu & Dimsum)",
+      "category": "Penjualan QRIS",
+      "type": "income",
+      "amount": 485000,
+      "source": "qris",
+      "paymentMethod": "QRIS",
+      "referenceNo": "QRIS-20261104-001",
+      "notes": "Pembayaran otomatis via GoPay & BCA QRIS",
+      "createdAt": "2026-11-04T15:00:23.404Z"
+    },
+    {
+      "id": "tx_02",
+      "userId": "user_anonymous",
+      "date": "2026-11-04",
+      "time": "11:15",
+      "description": "Struk Belanja Biji Kopi Arabika 3kg & Susu UHT 1 Karton",
+      "category": "Belanja Bahan Baku",
+      "type": "expense",
+      "amount": 410000,
+      "source": "ocr_scan",
+      "paymentMethod": "Transfer Bank",
+      "referenceNo": "OCR-INV-9921",
+      "notes": "Hasil scan kamera nota Toko Kopi Mandiri",
+      "items": [
+        {
+          "name": "Kopi Arabika Toraja 1kg",
+          "qty": 3,
+          "price": 105000,
+          "total": 315000
+        },
+        {
+          "name": "Susu Fresh Milk UHT 1L (Karton 12x)",
+          "qty": 1,
+          "price": 95000,
+          "total": 95000
+        }
+      ],
+      "createdAt": "2026-11-04T15:00:23.404Z"
+    },
+    {
+      "id": "tx_03",
+      "userId": "user_anonymous",
+      "date": "2026-11-03",
+      "time": "19:45",
+      "description": "Penjualan QRIS Malam (Weekend Promo)",
+      "category": "Penjualan QRIS",
+      "type": "income",
+      "amount": 1120000,
+      "source": "qris",
+      "paymentMethod": "QRIS",
+      "referenceNo": "QRIS-20261103-088",
+      "notes": "Ramai pengunjung malam minggu",
+      "createdAt": "2026-11-03T15:00:23.404Z"
+    },
+    {
+      "id": "tx_04",
+      "userId": "user_anonymous",
+      "date": "2026-11-03",
+      "time": "15:10",
+      "description": "Penjualan Tunai Meja 1 - 4",
+      "category": "Penjualan Tunai",
+      "type": "income",
+      "amount": 320000,
+      "source": "manual",
+      "paymentMethod": "Tunai",
+      "referenceNo": "CASH-20261103-02",
+      "notes": "Kas laci toko",
+      "createdAt": "2026-11-03T15:00:23.404Z"
+    },
+    {
+      "id": "tx_05",
+      "userId": "user_anonymous",
+      "date": "2026-11-02",
+      "time": "10:00",
+      "description": "Restock Cup Biodegradable & Seal Plastik 500 pcs",
+      "category": "Belanja Bahan Baku",
+      "type": "expense",
+      "amount": 275000,
+      "source": "ocr_scan",
+      "paymentMethod": "Tunai",
+      "referenceNo": "OCR-PLASTIK-441",
+      "notes": "Nota Toko Plastik Berkah Sukses",
+      "items": [
+        {
+          "name": "Cup Dingin 16oz (Pack 50)",
+          "qty": 10,
+          "price": 20000,
+          "total": 200000
+        },
+        {
+          "name": "Straw Kertas Ramah Lingkungan",
+          "qty": 5,
+          "price": 15000,
+          "total": 75000
+        }
+      ],
+      "createdAt": "2026-11-02T15:00:23.404Z"
+    },
+    {
+      "id": "tx_06",
+      "userId": "user_anonymous",
+      "date": "2026-11-01",
+      "time": "20:30",
+      "description": "Penjualan QRIS Harian (18 Pelanggan)",
+      "category": "Penjualan QRIS",
+      "type": "income",
+      "amount": 890000,
+      "source": "qris",
+      "paymentMethod": "QRIS",
+      "referenceNo": "QRIS-20261101-042",
+      "createdAt": "2026-11-01T15:00:23.404Z"
+    },
+    {
+      "id": "tx_07",
+      "userId": "user_anonymous",
+      "date": "2026-10-31",
+      "time": "16:00",
+      "description": "Bayar Listrik PLN Usaha & Tagihan PDAM",
+      "category": "Sewa Tempat & Listrik",
+      "type": "expense",
+      "amount": 380000,
+      "source": "manual",
+      "paymentMethod": "Transfer Bank",
+      "referenceNo": "PLN-20261031-01",
+      "createdAt": "2026-10-31T15:00:23.404Z"
+    },
+    {
+      "id": "tx_08",
+      "userId": "user_anonymous",
+      "date": "2026-10-30",
+      "time": "21:00",
+      "description": "Penjualan QRIS Sore & Malam",
+      "category": "Penjualan QRIS",
+      "type": "income",
+      "amount": 940000,
+      "source": "qris",
+      "paymentMethod": "QRIS",
+      "referenceNo": "QRIS-20261030-019",
+      "createdAt": "2026-10-30T15:00:23.404Z"
+    },
+    {
+      "id": "tx_09",
+      "userId": "user_anonymous",
+      "date": "2026-10-29",
+      "time": "09:20",
+      "description": "Belanja Sirup Monin Hazelnut & Vanila 2 Botol",
+      "category": "Belanja Bahan Baku",
+      "type": "expense",
+      "amount": 290000,
+      "source": "ocr_scan",
+      "paymentMethod": "QRIS",
+      "referenceNo": "OCR-SIRUP-102",
+      "createdAt": "2026-10-29T15:00:23.404Z"
+    },
+    {
+      "id": "tx_10",
+      "userId": "user_anonymous",
+      "date": "2026-10-28",
+      "time": "18:15",
+      "description": "Penjualan Akhir Pekan (QRIS + Tunai)",
+      "category": "Penjualan QRIS",
+      "type": "income",
+      "amount": 1450000,
+      "source": "qris",
+      "paymentMethod": "QRIS",
+      "referenceNo": "QRIS-20261028-112",
+      "createdAt": "2026-10-28T15:00:23.404Z"
+    },
+    {
+      "id": "tx_11",
+      "userId": "user_anonymous",
+      "date": "2026-10-27",
+      "time": "12:00",
+      "description": "Penjualan QRIS Siang",
+      "category": "Penjualan QRIS",
+      "type": "income",
+      "amount": 670000,
+      "source": "qris",
+      "paymentMethod": "QRIS",
+      "referenceNo": "QRIS-20261027-044",
+      "createdAt": "2026-10-27T15:00:23.404Z"
+    },
+    {
+      "id": "tx_12",
+      "userId": "user_anonymous",
+      "date": "2026-10-25",
+      "time": "17:00",
+      "description": "Gaji Paruh Waktu Barista (Minggu Ke-4)",
+      "category": "Gaji Karyawan",
+      "type": "expense",
+      "amount": 750000,
+      "source": "manual",
+      "paymentMethod": "Transfer Bank",
+      "referenceNo": "PAYROLL-20261025-01",
+      "createdAt": "2026-10-25T15:00:23.404Z"
+    },
+    {
+      "id": "tx_13",
+      "userId": "user_anonymous",
+      "date": "2026-10-23",
+      "time": "19:30",
+      "description": "Penjualan QRIS & Takeaway Kuliner",
+      "category": "Penjualan QRIS",
+      "type": "income",
+      "amount": 830000,
+      "source": "qris",
+      "paymentMethod": "QRIS",
+      "referenceNo": "QRIS-20261023-091",
+      "createdAt": "2026-10-23T15:00:23.404Z"
+    },
+    {
+      "id": "tx_14",
+      "userId": "user_anonymous",
+      "date": "2026-10-21",
+      "time": "11:00",
+      "description": "Belanja Daging Ayam & Bumbu Mentai Dimsum",
+      "category": "Belanja Bahan Baku",
+      "type": "expense",
+      "amount": 340000,
+      "source": "ocr_scan",
+      "paymentMethod": "Tunai",
+      "referenceNo": "OCR-PASAR-8812",
+      "createdAt": "2026-10-21T15:00:23.404Z"
+    },
+    {
+      "id": "tx_15",
+      "userId": "user_anonymous",
+      "date": "2026-10-19",
+      "time": "20:00",
+      "description": "Penjualan QRIS Mingguan",
+      "category": "Penjualan QRIS",
+      "type": "income",
+      "amount": 1020000,
+      "source": "qris",
+      "paymentMethod": "QRIS",
+      "referenceNo": "QRIS-20261019-052",
+      "createdAt": "2026-10-19T15:00:23.404Z"
+    },
+    {
+      "id": "tx_16",
+      "userId": "user_anonymous",
+      "date": "2026-10-17",
+      "time": "14:00",
+      "description": "Iklan Promosi Instagram Story & Banner Meja",
+      "category": "Pemasaran & Promosi",
+      "type": "expense",
+      "amount": 150000,
+      "source": "manual",
+      "paymentMethod": "Transfer Bank",
+      "referenceNo": "ADS-20261017-01",
+      "createdAt": "2026-10-17T15:00:23.404Z"
+    }
+  ],
+  "qrisMutations": [
+    {
+      "id": "qris_mut_1",
+      "userId": "user_anonymous",
+      "timestamp": "2026-11-04T15:00:23.404Z",
+      "amount": 72000,
+      "customerName": "Bima Santoso",
+      "issuer": "ShopeePay",
+      "rrn": "002918401928",
+      "status": "settled",
+      "syncedToLedger": true
+    },
+    {
+      "id": "qris_mut_2",
+      "userId": "user_anonymous",
+      "timestamp": "2026-11-04T14:15:23.404Z",
+      "amount": 38000,
+      "customerName": "Dinda Permata",
+      "issuer": "BCA QRIS",
+      "rrn": "002918391024",
+      "status": "settled",
+      "syncedToLedger": true
+    },
+    {
+      "id": "qris_mut_3",
+      "userId": "user_anonymous",
+      "timestamp": "2026-11-04T13:00:23.404Z",
+      "amount": 94000,
+      "customerName": "Ferry Kurniawan",
+      "issuer": "GoPay",
+      "rrn": "002918281920",
+      "status": "settled",
+      "syncedToLedger": true
+    },
+    {
+      "id": "qris_mut_4",
+      "userId": "user_anonymous",
+      "timestamp": "2026-11-04T11:00:23.404Z",
+      "amount": 45000,
+      "customerName": "Siti Rahma",
+      "issuer": "Dana",
+      "rrn": "002918192011",
+      "status": "settled",
+      "syncedToLedger": true
+    },
+    {
+      "id": "qris_mut_5",
+      "userId": "user_anonymous",
+      "timestamp": "2026-11-04T09:00:23.404Z",
+      "amount": 125000,
+      "customerName": "Aditya Pratama (Rombongan)",
+      "issuer": "Mandiri Livin",
+      "rrn": "002918091823",
+      "status": "settled",
+      "syncedToLedger": true
+    }
+  ],
+  "products": [
+    {
+      "id": "prod_1",
+      "userId": "user_anonymous",
+      "name": "Kopi Susu Gula Aren Spesial",
+      "category": "Minuman Kopi",
+      "costPrice": 6500,
+      "sellingPrice": 18000,
+      "stock": 120,
+      "unit": "Cup"
+    },
+    {
+      "id": "prod_2",
+      "userId": "user_anonymous",
+      "name": "Caramel Macchiato Latte",
+      "category": "Minuman Kopi",
+      "costPrice": 8500,
+      "sellingPrice": 24000,
+      "stock": 85,
+      "unit": "Cup"
+    },
+    {
+      "id": "prod_3",
+      "userId": "user_anonymous",
+      "name": "Dimsum Ayam Mentai (Isi 4 pcs)",
+      "category": "Camilan & Makanan",
+      "costPrice": 9000,
+      "sellingPrice": 22000,
+      "stock": 60,
+      "unit": "Porsi"
+    },
+    {
+      "id": "prod_4",
+      "userId": "user_anonymous",
+      "name": "Roti Panggang Coklat Keju Melted",
+      "category": "Camilan & Makanan",
+      "costPrice": 5000,
+      "sellingPrice": 15000,
+      "stock": 45,
+      "unit": "Porsi"
+    },
+    {
+      "id": "prod_5",
+      "userId": "user_anonymous",
+      "name": "Matcha Oat Milk Creamy",
+      "category": "Non-Kopi",
+      "costPrice": 9500,
+      "sellingPrice": 25000,
+      "stock": 50,
+      "unit": "Cup"
+    },
+    {
+      "id": "prod_1793805154885_1",
+      "userId": "usr_1793805154885",
+      "name": "Produk Unggulan A",
+      "category": "Menu Utama",
+      "costPrice": 8000,
+      "sellingPrice": 18000,
+      "stock": 50,
+      "unit": "Pcs"
+    },
+    {
+      "id": "prod_1793805154885_2",
+      "userId": "usr_1793805154885",
+      "name": "Produk Minuman B",
+      "category": "Minuman",
+      "costPrice": 4000,
+      "sellingPrice": 12000,
+      "stock": 80,
+      "unit": "Cup"
+    },
+    {
+      "id": "prod_1793805916260_1",
+      "userId": "usr_1793805916259",
+      "name": "Produk Unggulan A",
+      "category": "Menu Utama",
+      "costPrice": 8000,
+      "sellingPrice": 18000,
+      "stock": 50,
+      "unit": "Pcs"
+    },
+    {
+      "id": "prod_1793805916260_2",
+      "userId": "usr_1793805916259",
+      "name": "Produk Minuman B",
+      "category": "Minuman",
+      "costPrice": 4000,
+      "sellingPrice": 12000,
+      "stock": 80,
+      "unit": "Cup"
+    }
+  ],
+  "notifications": [
+    {
+      "id": "notif_welcome_1793805154885",
+      "userId": "usr_1793805154885",
+      "title": "Selamat Datang di FinSight! 🎉",
+      "message": "Akun usaha \"Warung Berkah Budi\" atas nama Budi Santoso telah aktif dan siap digunakan.",
+      "type": "system",
+      "isRead": false,
+      "createdAt": "2026-11-04T15:12:34.885Z"
+    },
+    {
+      "id": "notif_1",
+      "userId": "user_anonymous",
+      "title": "Pemasukan QRIS Masuk!",
+      "message": "Uang masuk Rp 72.000 dari Bima Santoso via ShopeePay berhasil diverifikasi.",
+      "type": "qris",
+      "amount": 72000,
+      "isRead": false,
+      "createdAt": "2026-11-04T15:00:23.404Z"
+    },
+    {
+      "id": "notif_2",
+      "userId": "user_anonymous",
+      "title": "Ringkasan Finansial Harian FinSight",
+      "message": "Kemarin usaha mencatat omzet Rp 1.440.000 dengan margin laba 62%. Kondisi kas sangat sehat!",
+      "type": "report",
+      "isRead": false,
+      "createdAt": "2026-11-04T11:00:23.404Z"
+    },
+    {
+      "id": "notif_3",
+      "userId": "user_anonymous",
+      "title": "Kesehatan Usaha: Zona HIJAU (Skor 92/100)",
+      "message": "Selamat! Pembukuan Anda memenuhi syarat Kesiapan Pinjaman (Level 3 - Bankable). Laporan KUR siap diajukan ke perbankan.",
+      "type": "health_alert",
+      "isRead": true,
+      "createdAt": "2026-11-03T15:00:23.404Z"
+    }
+  ]
+}

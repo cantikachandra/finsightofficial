@@ -1,0 +1,6 @@
+{
+  "name": "FinSight - Manajemen Keuangan & QRIS UMKM Siap Pinjam",
+  "description": "Platform keuangan cerdas UMKM dengan scan OCR nota belanja, mutasi QRIS otomatis, notifikasi web/hp, indikator kesehatan usaha, prediksi arus kas, dan modul Laporan Siap Pinjam.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
