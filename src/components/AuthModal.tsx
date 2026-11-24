@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Mail, Lock, User as UserIcon, Store, MapPin, Phone, ArrowRight, ShieldCheck, AlertCircle, X, CheckCircle2, Sparkles, RefreshCw } from 'lucide-react';
 import { User } from '../types';
+import { checkPasswordStrength } from '../utils/password';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -16,12 +17,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   initialMode = 'login',
 }) => {
   const [mode, setMode] = useState<'login' | 'register' | 'verify'>(initialMode);
-  const [email, setEmail] = useState('anonymous@finsight.id');
-  const [password, setPassword] = useState('anonymous123');
-  const [fullName, setFullName] = useState('Anonymous');
-  const [businessName, setBusinessName] = useState('Usaha Mandiri (Anonymous)');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [businessName, setBusinessName] = useState('');
   const [businessType, setBusinessType] = useState('Kuliner & Minuman');
-  const [phone, setPhone] = useState('081234567890');
+  const [phone, setPhone] = useState('');
   const [city, setCity] = useState('Indonesia');
 
   // Verification state
@@ -39,6 +40,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    const pwCheck = checkPasswordStrength(password);
+    if (!pwCheck.isValid) {
+      setError(pwCheck.firstError || 'Kata sandi harus minimal 8 karakter dengan huruf besar, huruf kecil, angka, dan simbol.');
+      return;
+    }
     setLoading(true);
 
     try {
@@ -166,7 +172,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 dark:border-slate-800">
         {/* Header */}
         <div className="bg-gradient-to-r from-emerald-600 to-indigo-700 px-6 py-5 text-white flex items-center justify-between">
           <div className="flex items-center gap-3">

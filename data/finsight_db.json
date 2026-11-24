@@ -1,9 +1,22 @@
 {
   "users": [
     {
+      "id": "user_admin_finsight",
+      "email": "admin@finsight.id",
+      "passwordHash": "FinSight#Admin2026!",
+      "fullName": "Administrator FinSight",
+      "businessName": "Pusat Administrasi FinSight",
+      "businessType": "Manajemen & Bantuan UMKM",
+      "phone": "080012345678",
+      "city": "Jakarta",
+      "isVerified": true,
+      "role": "admin",
+      "createdAt": "2026-11-19T04:28:25.995Z"
+    },
+    {
       "id": "user_anonymous",
       "email": "anonymous@finsight.id",
-      "passwordHash": "anonymous123",
+      "passwordHash": "Anon@FinSight2026!",
       "fullName": "Anonymous",
       "businessName": "Usaha Mandiri (Anonymous)",
       "businessType": "Kuliner & Usaha Ritel",
@@ -12,7 +25,8 @@
       "qrisMerchantId": "NMID-ID102008492019",
       "isVerified": true,
       "role": "owner",
-      "createdAt": "2026-09-05T15:00:23.404Z"
+      "createdAt": "2026-09-05T15:00:23.404Z",
+      "themePreference": "light"
     },
     {
       "id": "user_cantika_real",
@@ -55,6 +69,34 @@
       "isVerified": true,
       "role": "owner",
       "createdAt": "2026-11-04T15:25:16.259Z"
+    },
+    {
+      "id": "usr_1794039458983",
+      "email": "test.umkm@gmail.com",
+      "passwordHash": "magic_login",
+      "fullName": "Pak Joko",
+      "businessName": "Warung Berkah",
+      "businessType": "Kuliner & Usaha Ritel",
+      "phone": "081234567890",
+      "city": "Indonesia",
+      "qrisMerchantId": "NMID-ID515306816639",
+      "isVerified": true,
+      "role": "owner",
+      "createdAt": "2026-11-07T08:17:38.983Z"
+    },
+    {
+      "id": "usr_1794040520931",
+      "email": "budi.santoso@gmail.com",
+      "passwordHash": "sandibaruku123",
+      "fullName": "Budi Santoso",
+      "businessName": "Usaha Mandiri",
+      "businessType": "Kuliner & Usaha Ritel",
+      "phone": "081299887766",
+      "city": "Indonesia",
+      "qrisMerchantId": "NMID-ID206607071462",
+      "isVerified": true,
+      "role": "owner",
+      "createdAt": "2026-11-07T08:35:20.931Z"
     }
   ],
   "emailVerifications": [
@@ -334,6 +376,244 @@
       "paymentMethod": "Transfer Bank",
       "referenceNo": "ADS-20261017-01",
       "createdAt": "2026-10-17T15:00:23.404Z"
+    },
+    {
+      "id": "tx_hist_34d",
+      "userId": "user_anonymous",
+      "date": "2026-10-16",
+      "time": "19:15",
+      "description": "Rekap Penjualan Kasir POS Bulan Lalu (Minggu 1)",
+      "category": "Penjualan Non-Tunai",
+      "type": "income",
+      "amount": 2450000,
+      "source": "pos",
+      "paymentMethod": "E-Wallet",
+      "referenceNo": "POS-HIST-034",
+      "createdAt": "2026-10-16T06:00:56.855Z"
+    },
+    {
+      "id": "tx_hist_40d",
+      "userId": "user_anonymous",
+      "date": "2026-10-10",
+      "time": "10:30",
+      "description": "Belanja Grosir Biji Kopi, Susu & Sirup Bulanan",
+      "category": "Belanja Bahan Baku",
+      "type": "expense",
+      "amount": 1180000,
+      "source": "ocr_scan",
+      "paymentMethod": "Transfer Bank",
+      "referenceNo": "OCR-HIST-040",
+      "createdAt": "2026-10-10T06:00:56.855Z"
+    },
+    {
+      "id": "tx_hist_52d",
+      "userId": "user_anonymous",
+      "date": "2026-09-28",
+      "time": "20:10",
+      "description": "Penjualan Paket Catering & Event Komunitas",
+      "category": "Penjualan Kasir POS",
+      "type": "income",
+      "amount": 3150000,
+      "source": "pos",
+      "paymentMethod": "Transfer Bank",
+      "referenceNo": "POS-HIST-052",
+      "createdAt": "2026-09-28T06:00:56.855Z"
+    },
+    {
+      "id": "tx_hist_64d",
+      "userId": "user_anonymous",
+      "date": "2026-09-16",
+      "time": "15:00",
+      "description": "Gaji Karyawan & Biaya Sewa Booth Bulanan",
+      "category": "Gaji Karyawan",
+      "type": "expense",
+      "amount": 1650000,
+      "source": "manual",
+      "paymentMethod": "Transfer Bank",
+      "referenceNo": "PAY-HIST-064",
+      "createdAt": "2026-09-16T06:00:56.855Z"
+    },
+    {
+      "id": "tx_hist_78d",
+      "userId": "user_anonymous",
+      "date": "2026-09-02",
+      "time": "18:45",
+      "description": "Penjualan Tunai & Kasir POS Triwulan",
+      "category": "Penjualan Tunai",
+      "type": "income",
+      "amount": 1920000,
+      "source": "pos",
+      "paymentMethod": "Tunai",
+      "referenceNo": "POS-HIST-078",
+      "createdAt": "2026-09-02T06:00:56.855Z"
+    },
+    {
+      "id": "tx_hist_105d",
+      "userId": "user_anonymous",
+      "date": "2026-08-06",
+      "time": "17:20",
+      "description": "Penjualan Kasir POS Bulan Ke-4 (Promo Musiman)",
+      "category": "Penjualan Non-Tunai",
+      "type": "income",
+      "amount": 3850000,
+      "source": "pos",
+      "paymentMethod": "E-Wallet",
+      "referenceNo": "POS-HIST-105",
+      "createdAt": "2026-08-06T06:00:56.855Z"
+    },
+    {
+      "id": "tx_hist_122d",
+      "userId": "user_anonymous",
+      "date": "2026-07-20",
+      "time": "11:00",
+      "description": "Pembelian Bahan Baku & Kemasan 2 Bulan",
+      "category": "Belanja Bahan Baku",
+      "type": "expense",
+      "amount": 1890000,
+      "source": "ocr_scan",
+      "paymentMethod": "Transfer Bank",
+      "referenceNo": "OCR-HIST-122",
+      "createdAt": "2026-07-20T06:00:56.855Z"
+    },
+    {
+      "id": "tx_hist_148d",
+      "userId": "user_anonymous",
+      "date": "2026-06-24",
+      "time": "16:30",
+      "description": "Penjualan Online & Kasir Reguler Semester 1",
+      "category": "Penjualan Online",
+      "type": "income",
+      "amount": 4200000,
+      "source": "pos",
+      "paymentMethod": "Transfer Bank",
+      "referenceNo": "POS-HIST-148",
+      "createdAt": "2026-06-24T06:00:56.855Z"
+    },
+    {
+      "id": "tx_hist_166d",
+      "userId": "user_anonymous",
+      "date": "2026-06-06",
+      "time": "09:40",
+      "description": "Perawatan Mesin Espresso & Listrik Operasional",
+      "category": "Sewa Tempat & Listrik",
+      "type": "expense",
+      "amount": 1350000,
+      "source": "manual",
+      "paymentMethod": "Transfer Bank",
+      "referenceNo": "OPS-HIST-166",
+      "createdAt": "2026-06-06T06:00:56.855Z"
+    },
+    {
+      "id": "tx_hist_205d",
+      "userId": "user_anonymous",
+      "date": "2026-04-28",
+      "time": "19:00",
+      "description": "Pendapatan Penjualan Kasir Kuartal Awal Tahun",
+      "category": "Penjualan Kasir POS",
+      "type": "income",
+      "amount": 5400000,
+      "source": "pos",
+      "paymentMethod": "Transfer Bank",
+      "referenceNo": "POS-HIST-205",
+      "createdAt": "2026-04-28T06:00:56.855Z"
+    },
+    {
+      "id": "tx_hist_235d",
+      "userId": "user_anonymous",
+      "date": "2026-03-29",
+      "time": "13:15",
+      "description": "Restock Bahan Baku & Perlengkapan Dapur Tahunan",
+      "category": "Belanja Bahan Baku",
+      "type": "expense",
+      "amount": 2750000,
+      "source": "ocr_scan",
+      "paymentMethod": "Transfer Bank",
+      "referenceNo": "OCR-HIST-235",
+      "createdAt": "2026-03-29T06:00:56.855Z"
+    },
+    {
+      "id": "tx_hist_275d",
+      "userId": "user_anonymous",
+      "date": "2026-02-17",
+      "time": "18:20",
+      "description": "Penjualan Bazaar UMKM & Kasir Outlet",
+      "category": "Penjualan Non-Tunai",
+      "type": "income",
+      "amount": 4950000,
+      "source": "pos",
+      "paymentMethod": "E-Wallet",
+      "referenceNo": "POS-HIST-275",
+      "createdAt": "2026-02-17T06:00:56.855Z"
+    },
+    {
+      "id": "tx_hist_310d",
+      "userId": "user_anonymous",
+      "date": "2026-01-13",
+      "time": "10:00",
+      "description": "Sewa Kios & Gaji Tim Operasional Kuartal Awal",
+      "category": "Sewa Tempat & Listrik",
+      "type": "expense",
+      "amount": 2900000,
+      "source": "manual",
+      "paymentMethod": "Transfer Bank",
+      "referenceNo": "RENT-HIST-310",
+      "createdAt": "2026-01-13T06:00:56.855Z"
+    },
+    {
+      "id": "tx_hist_342d",
+      "userId": "user_anonymous",
+      "date": "2025-12-12",
+      "time": "20:00",
+      "description": "Penjualan Perdana Pembukaan Outlet Tahun Berjalan",
+      "category": "Penjualan Tunai",
+      "type": "income",
+      "amount": 3650000,
+      "source": "pos",
+      "paymentMethod": "Tunai",
+      "referenceNo": "POS-HIST-342",
+      "createdAt": "2025-12-12T06:00:56.855Z"
+    },
+    {
+      "id": "tx_sari_hist_48d",
+      "userId": "user_demo_02",
+      "date": "2026-10-02",
+      "time": "16:10",
+      "description": "Penjualan Paket Roti & Kopi Triwulan",
+      "category": "Penjualan Kasir POS",
+      "type": "income",
+      "amount": 2150000,
+      "source": "pos",
+      "paymentMethod": "E-Wallet",
+      "referenceNo": "POS-SARI-048",
+      "createdAt": "2026-10-02T06:00:56.855Z"
+    },
+    {
+      "id": "tx_sari_hist_130d",
+      "userId": "user_demo_02",
+      "date": "2026-07-12",
+      "time": "11:45",
+      "description": "Belanja Bahan Kue & Tepung Semester",
+      "category": "Belanja Bahan Baku",
+      "type": "expense",
+      "amount": 980000,
+      "source": "ocr_scan",
+      "paymentMethod": "Transfer Bank",
+      "referenceNo": "OCR-SARI-130",
+      "createdAt": "2026-07-12T06:00:56.855Z"
+    },
+    {
+      "id": "tx_sari_hist_240d",
+      "userId": "user_demo_02",
+      "date": "2026-03-24",
+      "time": "17:00",
+      "description": "Omzet Penjualan Tahunan Kedai Sari",
+      "category": "Penjualan Non-Tunai",
+      "type": "income",
+      "amount": 3400000,
+      "source": "pos",
+      "paymentMethod": "Transfer Bank",
+      "referenceNo": "POS-SARI-240",
+      "createdAt": "2026-03-24T06:00:56.855Z"
     }
   ],
   "qrisMutations": [
@@ -483,6 +763,26 @@
       "sellingPrice": 12000,
       "stock": 80,
       "unit": "Cup"
+    },
+    {
+      "id": "prod_1794040520931_1",
+      "userId": "usr_1794040520931",
+      "name": "Produk Unggulan A",
+      "category": "Menu Utama",
+      "costPrice": 8000,
+      "sellingPrice": 18000,
+      "stock": 50,
+      "unit": "Pcs"
+    },
+    {
+      "id": "prod_1794040520931_2",
+      "userId": "usr_1794040520931",
+      "name": "Produk Minuman B",
+      "category": "Minuman",
+      "costPrice": 4000,
+      "sellingPrice": 12000,
+      "stock": 80,
+      "unit": "Cup"
     }
   ],
   "notifications": [
@@ -522,6 +822,65 @@
       "type": "health_alert",
       "isRead": true,
       "createdAt": "2026-11-03T15:00:23.404Z"
+    }
+  ],
+  "magicLinks": [
+    {
+      "id": "ml_1794039458983",
+      "email": "test.umkm@gmail.com",
+      "token": "tok_eq4pkk35mw64ru07",
+      "sentAt": "2026-11-07T08:17:38.983Z",
+      "expiresAt": "2026-11-07T08:47:38.983Z",
+      "isUsed": false
+    },
+    {
+      "id": "ml_1794040125496",
+      "email": "anonymous@finsight.id",
+      "token": "tok_sz6gyc2pmw6564ag",
+      "sentAt": "2026-11-07T08:28:45.496Z",
+      "expiresAt": "2026-11-07T08:58:45.496Z",
+      "isUsed": true
+    }
+  ],
+  "passwordResets": [
+    {
+      "id": "pr_1794040546253",
+      "email": "budi.santoso@gmail.com",
+      "token": "rst_337lg132mw65f4y5",
+      "sentAt": "2026-11-07T08:35:46.253Z",
+      "expiresAt": "2026-11-07T09:05:46.254Z",
+      "isUsed": true
+    }
+  ],
+  "supportChats": [
+    {
+      "id": "chat_1795067127317",
+      "guestName": "Pengguna FinSight",
+      "guestEmail": "",
+      "guestPhone": "",
+      "businessName": "",
+      "topic": "Lupa Password & Akun",
+      "status": "escalated",
+      "escalatedToAdmin": true,
+      "unreadByAdmin": true,
+      "messages": [
+        {
+          "id": "msg_1795067127317_u",
+          "sender": "user",
+          "senderName": "Pengguna FinSight",
+          "text": "Halo Admin, saya lupa kata sandi akun saya. Mohon bantuan pengecekan atau reset password.",
+          "createdAt": "2026-11-19T05:45:27.317Z"
+        },
+        {
+          "id": "msg_1795067127318_b",
+          "sender": "bot",
+          "senderName": "Asisten FinSight",
+          "text": "Permintaan terkait akun/kata sandi Anda sudah diteruskan ke **Admin FinSight**. Admin dapat memeriksa data akun dan membantu mengatur ulang kata sandi Anda langsung di sini.",
+          "createdAt": "2026-11-19T05:45:27.317Z"
+        }
+      ],
+      "createdAt": "2026-11-19T05:45:27.317Z",
+      "updatedAt": "2026-11-19T05:45:27.317Z"
     }
   ]
 }

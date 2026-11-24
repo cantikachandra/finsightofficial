@@ -2,17 +2,17 @@ import React, { useState } from 'react';
 import {
   Bell,
   Camera,
-  QrCode,
+  ShoppingCart,
   PlusCircle,
   FileText,
-  User as UserIcon,
   LogOut,
   Smartphone,
-  CheckCircle2,
-  AlertTriangle,
   RotateCcw,
-  Sparkles,
   ChevronDown,
+  ShieldCheck,
+  UserCog,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { User, NotificationItem, HealthMetric } from '../types';
 import { requestNotificationPermission, playAlertSound } from '../utils/notification';
@@ -21,8 +21,11 @@ interface NavbarProps {
   user: User | null;
   notifications: NotificationItem[];
   health: HealthMetric | null;
+  theme: 'light' | 'dark';
+  onToggleTheme: () => void;
+  onOpenProfileModal: () => void;
   onOpenScanModal: () => void;
-  onOpenQrisModal: () => void;
+  onOpenPosTab: () => void;
   onOpenTxModal: () => void;
   onOpenFundingModal: () => void;
   onOpenAuthModal: () => void;
@@ -35,8 +38,11 @@ export const Navbar: React.FC<NavbarProps> = ({
   user,
   notifications,
   health,
+  theme,
+  onToggleTheme,
+  onOpenProfileModal,
   onOpenScanModal,
-  onOpenQrisModal,
+  onOpenPosTab,
   onOpenTxModal,
   onOpenFundingModal,
   onOpenAuthModal,
@@ -50,6 +56,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted'
   );
 
+  const isAdmin = user?.role === 'admin';
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 
   const handleEnablePush = async () => {
@@ -57,7 +64,6 @@ export const Navbar: React.FC<NavbarProps> = ({
     setNotifGranted(granted);
     if (granted) {
       playAlertSound();
-      alert('Notifikasi Web & Handphone FinSight Berhasil Diaktifkan! Setiap ada mutasi QRIS masuk atau pengeluaran, Anda akan menerima peringatan langsung.');
     }
   };
 
@@ -79,56 +85,47 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   const handleResetData = async () => {
-    if (confirm('Reset seluruh data simulasi ke setelan awal default?')) {
+    if (confirm('Reset seluruh data transaksi ke setelan awal default?')) {
       await fetch('/api/reset-demo', { method: 'POST' });
       onRefreshData();
-      alert('Data simulasi telah direset!');
     }
   };
 
   return (
-    <header className="no-print sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-2xs">
+    <header className="no-print sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800 shadow-2xs transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 gap-3">
+        <div className="flex items-center justify-between h-16 gap-4">
           {/* Logo & Brand */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-500 flex items-center justify-center text-white shadow-md shadow-blue-500/25 font-mono font-black text-lg">
-                FS
-              </div>
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <span className="font-extrabold text-lg tracking-tight text-slate-900 font-mono">
-                    FinSight
-                  </span>
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-800 uppercase tracking-wider">
-                    SME
-                  </span>
-                </div>
-                <p className="text-[10px] text-slate-400 hidden sm:block leading-none">
-                  QRIS &amp; Funding-Ready Platform
-                </p>
-              </div>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex items-center gap-2.5 shrink-0">
+              <img
+                src="/assets/aistudio/Logo_FinSight_Biru_Mengilap_c4e93b1f.png"
+                alt="FinSight"
+                className="h-9 w-auto object-contain"
+              />
+              <span className="font-extrabold text-lg tracking-tight text-slate-900 dark:text-white font-mono whitespace-nowrap">
+                FinSight
+              </span>
             </div>
 
-            {/* Business Badge */}
             {user && (
-              <div className="hidden lg:flex items-center gap-2 pl-4 border-l border-slate-200 text-xs">
-                <span className="text-slate-400">Usaha:</span>
-                <span className="font-bold text-slate-800 bg-blue-50/70 border border-blue-100 px-2 py-1 rounded-lg">
-                  {user.businessName}
+              <div className="hidden lg:flex items-center gap-2 pl-4 border-l border-slate-200 dark:border-slate-700 text-xs min-w-0">
+                <span className="text-slate-400 dark:text-slate-400 shrink-0">
+                  {isAdmin ? 'Mode:' : 'Usaha:'}
                 </span>
-                {health && (
+                <span className="font-bold text-slate-800 dark:text-slate-100 bg-blue-50/70 dark:bg-blue-950/60 border border-blue-100 dark:border-blue-800 px-2.5 py-1 rounded-lg truncate max-w-[210px]">
+                  {isAdmin ? 'Administrator FinSight' : user.businessName}
+                </span>
+                {!isAdmin && health && (
                   <span
-                    className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                    className={`inline-flex items-center text-[11px] font-bold px-2 py-0.5 rounded-md whitespace-nowrap ${
                       health.status === 'hijau'
-                        ? 'bg-emerald-100 text-emerald-800'
+                        ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300'
                         : health.status === 'kuning'
-                        ? 'bg-amber-100 text-amber-800'
-                        : 'bg-rose-100 text-rose-800'
+                        ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300'
+                        : 'bg-rose-50 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300'
                     }`}
                   >
-                    <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
                     Skor {health.score} ({health.status.toUpperCase()})
                   </span>
                 )}
@@ -137,188 +134,223 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           {/* Quick Action Buttons */}
-          <div className="flex items-center gap-2">
-            {/* Scan Receipt Camera Button */}
-            <button
-              onClick={onOpenScanModal}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
-              title="Pindai foto struk nota belanja otomatis dengan AI OCR"
-            >
-              <Camera className="w-4 h-4" />
-              <span className="hidden sm:inline">Scan Nota (OCR)</span>
-            </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {!isAdmin && (
+              <>
+                <button
+                  type="button"
+                  onClick={onOpenPosTab}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer whitespace-nowrap"
+                  title="Buka Kasir POS Pilih Katalog Produk"
+                >
+                  <ShoppingCart className="w-4 h-4" />
+                  <span className="hidden sm:inline">Kasir POS</span>
+                </button>
 
-            {/* QRIS Simulate Button */}
-            <button
-              onClick={onOpenQrisModal}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
-              title="Simulasikan mutasi QRIS masuk secara otomatis"
-            >
-              <QrCode className="w-4 h-4" />
-              <span className="hidden sm:inline">Mutasi QRIS</span>
-            </button>
+                <button
+                  type="button"
+                  onClick={onOpenScanModal}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 hover:text-blue-700 text-xs font-semibold transition-colors cursor-pointer border border-slate-200 dark:border-slate-700 whitespace-nowrap"
+                  title="Pindai foto struk nota belanja"
+                >
+                  <Camera className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  <span className="hidden sm:inline">Scan Nota</span>
+                </button>
 
-            {/* Add Manual Tx */}
-            <button
-              onClick={onOpenTxModal}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 text-xs font-semibold transition-colors cursor-pointer border border-slate-200"
-              title="Catat transaksi manual"
-            >
-              <PlusCircle className="w-4 h-4 text-blue-600" />
-              <span className="hidden md:inline">Catat Manual</span>
-            </button>
+                <button
+                  type="button"
+                  onClick={onOpenTxModal}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 hover:text-blue-700 text-xs font-semibold transition-colors cursor-pointer border border-slate-200 dark:border-slate-700 whitespace-nowrap"
+                  title="Catat transaksi manual"
+                >
+                  <PlusCircle className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  <span className="hidden md:inline">Catat Manual</span>
+                </button>
 
-            {/* Push Notification Toggle for Web & Mobile */}
-            <button
-              onClick={handleEnablePush}
-              className={`p-2 rounded-xl text-xs font-medium border transition-colors cursor-pointer relative ${
-                notifGranted
-                  ? 'bg-blue-50 border-blue-200 text-blue-700'
-                  : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-              }`}
-              title={notifGranted ? 'Notifikasi Web/HP Aktif' : 'Aktifkan Notifikasi Web & HP'}
-            >
-              <Smartphone className="w-4 h-4" />
-              {notifGranted && (
-                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-blue-500 rounded-full ring-2 ring-white" />
-              )}
-            </button>
+                <button
+                  type="button"
+                  onClick={handleEnablePush}
+                  className={`p-2 rounded-xl text-xs font-medium border transition-colors cursor-pointer relative ${
+                    notifGranted
+                      ? 'bg-blue-50 dark:bg-blue-950/60 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
+                      : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                  }`}
+                  title={notifGranted ? 'Notifikasi Browser Aktif' : 'Aktifkan Notifikasi Browser'}
+                >
+                  <Smartphone className="w-4 h-4" />
+                </button>
 
-            {/* Notification Bell with Dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => setNotifDropdownOpen(!notifDropdownOpen)}
-                className="p-2 rounded-xl bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-700 relative transition-colors cursor-pointer"
-                title="Pusat Notifikasi"
-              >
-                <Bell className="w-4 h-4" />
-                {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-rose-600 text-white shadow-xs">
-                    {unreadCount}
-                  </span>
-                )}
-              </button>
-
-              {/* Notification Dropdown Panel */}
-              {notifDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-2xl shadow-xl border border-slate-200 p-3 z-50 animate-in fade-in zoom-in-95 duration-100">
-                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
-                    <div className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
-                      <Bell className="w-3.5 h-3.5 text-emerald-600" />
-                      Pusat Notifikasi FinSight
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={handleSendDailySummary}
-                        className="text-[10px] text-blue-600 hover:underline font-semibold"
-                        title="Simulasi Ringkasan Malam Hari"
-                      >
-                        Picu Ringkasan Harian
-                      </button>
-                      <button
-                        onClick={() => {
-                          onMarkNotificationRead();
-                          setNotifDropdownOpen(false);
-                        }}
-                        className="text-[10px] text-slate-400 hover:text-slate-700"
-                      >
-                        Tandai Dibaca
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                    {notifications.length === 0 ? (
-                      <div className="py-6 text-center text-xs text-slate-400">
-                        Belum ada notifikasi baru.
-                      </div>
-                    ) : (
-                      notifications.map((n) => (
-                        <div
-                          key={n.id}
-                          onClick={() => onMarkNotificationRead(n.id)}
-                          className={`p-2.5 rounded-xl border text-left cursor-pointer transition-colors ${
-                            !n.isRead
-                              ? 'bg-emerald-50/50 border-emerald-100 hover:bg-emerald-50'
-                              : 'bg-slate-50/50 border-slate-100 hover:bg-slate-50'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-1">
-                            <span className="text-xs font-bold text-slate-800 truncate">{n.title}</span>
-                            <span className="text-[10px] text-slate-400 shrink-0">
-                              {new Date(n.createdAt).toLocaleTimeString('id-ID', {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-600 mt-0.5 leading-snug">{n.message}</p>
-                        </div>
-                      ))
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setNotifDropdownOpen(!notifDropdownOpen)}
+                    className="p-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 relative transition-colors cursor-pointer"
+                    title="Pusat Notifikasi"
+                  >
+                    <Bell className="w-4 h-4" />
+                    {unreadCount > 0 && (
+                      <span className="absolute -top-1 -right-1 px-1.5 rounded-full text-[10px] font-bold bg-rose-600 text-white shadow-xs">
+                        {unreadCount}
+                      </span>
                     )}
-                  </div>
-                </div>
-              )}
-            </div>
+                  </button>
 
-            {/* User Profile / Auth Button */}
+                  {notifDropdownOpen && (
+                    <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 p-3 z-50">
+                      <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100 dark:border-slate-800">
+                        <div className="font-bold text-xs text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                          <Bell className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                          Pusat Notifikasi FinSight
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={handleSendDailySummary}
+                            className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline font-semibold cursor-pointer"
+                          >
+                            Ringkasan Harian
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onMarkNotificationRead();
+                              setNotifDropdownOpen(false);
+                            }}
+                            className="text-[10px] text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+                          >
+                            Tandai Dibaca
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                        {notifications.length === 0 ? (
+                          <div className="py-6 text-center text-xs text-slate-400">
+                            Belum ada notifikasi baru.
+                          </div>
+                        ) : (
+                          notifications.map((n) => (
+                            <div
+                              key={n.id}
+                              onClick={() => onMarkNotificationRead(n.id)}
+                              className={`p-2.5 rounded-xl border text-left cursor-pointer transition-colors ${
+                                !n.isRead
+                                  ? 'bg-blue-50/50 dark:bg-blue-950/40 border-blue-100 dark:border-blue-900 hover:bg-blue-50 dark:hover:bg-blue-950/60'
+                                  : 'bg-slate-50/50 dark:bg-slate-800/60 border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
+                                  {n.title}
+                                </span>
+                                <span className="text-[10px] text-slate-400 shrink-0 font-mono">
+                                  {new Date(n.createdAt).toLocaleTimeString('id-ID', {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5 leading-snug">
+                                {n.message}
+                              </p>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* Quick Light / Dark Mode Switch */}
+            <button
+              type="button"
+              onClick={onToggleTheme}
+              className="p-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-amber-300 transition-colors cursor-pointer"
+              title={theme === 'dark' ? 'Beralih ke Mode Terang' : 'Beralih ke Mode Gelap'}
+            >
+              {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
+
+            {/* User Profile Dropdown */}
             <div className="relative">
               {user ? (
                 <div>
                   <button
+                    type="button"
                     onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-                    className="flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors cursor-pointer text-xs"
+                    className="flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer text-xs"
                   >
-                    <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-xs">
-                      {user.fullName.charAt(0)}
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/70 text-blue-800 dark:text-blue-200 font-bold flex items-center justify-center text-xs">
+                      {isAdmin ? <ShieldCheck className="w-3.5 h-3.5" /> : user.fullName.charAt(0)}
                     </div>
-                    <span className="font-semibold text-slate-700 hidden sm:inline max-w-[120px] truncate">
+                    <span className="font-semibold text-slate-700 dark:text-slate-200 hidden sm:inline max-w-[120px] truncate">
                       {user.fullName.split(' ')[0]}
                     </span>
                     <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
                   </button>
 
                   {userDropdownOpen && (
-                    <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-200 p-2 z-50 text-xs">
-                      <div className="p-2 border-b border-slate-100">
-                        <p className="font-bold text-slate-800">{user.fullName}</p>
+                    <div className="absolute right-0 mt-2 w-60 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 p-2 z-50 text-xs">
+                      <div className="p-2 border-b border-slate-100 dark:border-slate-800">
+                        <p className="font-bold text-slate-800 dark:text-slate-100">{user.fullName}</p>
                         <p className="text-slate-400 text-[11px] truncate">{user.email}</p>
-                        <p className="text-emerald-700 font-semibold text-[11px] mt-1">
-                          {user.businessName} ({user.city})
+                        <p className="text-blue-700 dark:text-blue-400 font-semibold text-[11px] mt-1">
+                          {isAdmin ? 'Admin Pusat FinSight' : `${user.businessName} (${user.city})`}
                         </p>
                       </div>
 
-                      <div className="py-1">
+                      <div className="py-1 space-y-0.5">
                         <button
+                          type="button"
                           onClick={() => {
                             setUserDropdownOpen(false);
-                            onOpenFundingModal();
+                            onOpenProfileModal();
                           }}
-                          className="w-full text-left px-2 py-1.5 rounded-lg hover:bg-slate-50 text-slate-700 font-medium flex items-center gap-2"
+                          className="w-full text-left px-2 py-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold flex items-center gap-2 cursor-pointer"
                         >
-                          <FileText className="w-3.5 h-3.5 text-emerald-600" />
-                          Laporan Siap Pinjam KUR
+                          <UserCog className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                          Profil, Sandi &amp; Pengaturan
                         </button>
 
-                        <button
-                          onClick={() => {
-                            setUserDropdownOpen(false);
-                            handleResetData();
-                          }}
-                          className="w-full text-left px-2 py-1.5 rounded-lg hover:bg-slate-50 text-slate-700 font-medium flex items-center gap-2"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
-                          Reset Data Contoh
-                        </button>
+                        {!isAdmin && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setUserDropdownOpen(false);
+                                onOpenFundingModal();
+                              }}
+                              className="w-full text-left px-2 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-medium flex items-center gap-2 cursor-pointer"
+                            >
+                              <FileText className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                              Laporan Siap Pinjam KUR
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setUserDropdownOpen(false);
+                                handleResetData();
+                              }}
+                              className="w-full text-left px-2 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-medium flex items-center gap-2 cursor-pointer"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                              Reset Data Contoh
+                            </button>
+                          </>
+                        )}
                       </div>
 
-                      <div className="pt-1 border-t border-slate-100">
+                      <div className="pt-1 border-t border-slate-100 dark:border-slate-800">
                         <button
+                          type="button"
                           onClick={() => {
                             setUserDropdownOpen(false);
                             onLogout();
                           }}
-                          className="w-full text-left px-2 py-1.5 rounded-lg hover:bg-rose-50 text-rose-600 font-semibold flex items-center gap-2"
+                          className="w-full text-left px-2 py-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 text-rose-600 dark:text-rose-400 font-semibold flex items-center gap-2 cursor-pointer"
                         >
                           <LogOut className="w-3.5 h-3.5" />
                           Keluar Akun
@@ -329,8 +361,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </div>
               ) : (
                 <button
+                  type="button"
                   onClick={onOpenAuthModal}
-                  className="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-xl bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-700 text-white text-xs font-bold transition-colors cursor-pointer"
                 >
                   Masuk / Daftar
                 </button>
@@ -342,3 +375,4 @@ export const Navbar: React.FC<NavbarProps> = ({
     </header>
   );
 };
+
