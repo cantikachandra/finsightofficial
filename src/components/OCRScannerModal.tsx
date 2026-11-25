@@ -12,17 +12,16 @@ import {
   Trash2,
   ArrowRight,
   ArrowLeft,
-  Hash,
   BookOpen,
   RotateCcw,
-  Cpu,
   Edit3,
+  Zap,
 } from 'lucide-react';
 import { TransactionCategory, TransactionType } from '../types';
 import { playExpenseSound, playIncomeSound, sendBrowserNotification } from '../utils/notification';
 import { formatRupiah } from '../utils/exportReport';
 import { parseApiResponse } from '../utils/api';
-import { runLocalReceiptOcr } from '../utils/localOcr';
+import { runLocalReceiptOcr, warmUpLocalOcrWorker } from '../utils/localOcr';
 
 interface OCRScannerModalProps {
   isOpen: boolean;
@@ -68,7 +67,6 @@ function renderScaledJpeg(
     throw new Error('Browser tidak mendukung pemrosesan gambar kanvas.');
   }
 
-  // Fill white background so transparent PNG receipts remain crisp in JPEG
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, targetWidth, targetHeight);
   ctx.drawImage(source, 0, 0, targetWidth, targetHeight);
@@ -102,11 +100,8 @@ async function prepareImageFromFile(file: File): Promise<PreparedImagePair> {
       throw new Error('Dimensi foto nota tidak valid atau file rusak.');
     }
 
-    let ocrImage = renderScaledJpeg(img, width, height, 1600, 0.86);
-    if (ocrImage.length > 3_200_000) {
-      ocrImage = renderScaledJpeg(img, width, height, 1200, 0.76);
-    }
-    const thumbImage = renderScaledJpeg(img, width, height, 900, 0.72);
+    const ocrImage = renderScaledJpeg(img, width, height, 1350, 0.88);
+    const thumbImage = renderScaledJpeg(img, width, height, 850, 0.72);
     return { ocrImage, thumbImage };
   } finally {
     URL.revokeObjectURL(objectUrl);
@@ -117,11 +112,8 @@ function prepareImageFromVideo(video: HTMLVideoElement): PreparedImagePair | nul
   if (video.readyState < 2 || !video.videoWidth || !video.videoHeight) {
     return null;
   }
-  let ocrImage = renderScaledJpeg(video, video.videoWidth, video.videoHeight, 1600, 0.88);
-  if (ocrImage.length > 3_200_000) {
-    ocrImage = renderScaledJpeg(video, video.videoWidth, video.videoHeight, 1200, 0.78);
-  }
-  const thumbImage = renderScaledJpeg(video, video.videoWidth, video.videoHeight, 900, 0.74);
+  const ocrImage = renderScaledJpeg(video, video.videoWidth, video.videoHeight, 1350, 0.88);
+  const thumbImage = renderScaledJpeg(video, video.videoWidth, video.videoHeight, 850, 0.74);
   return { ocrImage, thumbImage };
 }
 
@@ -131,7 +123,7 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
   userId,
   onTransactionSaved,
 }) => {
-  const [activeMode, setActiveMode] = useState<'camera' | 'upload'>('upload');
+  const [activeMode, setActiveMode] = useState<'upload' | 'camera'>('upload');
   const [step, setStep] = useState<'capture' | 'detected' | 'bookkeeping'>('capture');
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
@@ -142,9 +134,8 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [ocrImagePayload, setOcrImagePayload] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
-  const [scanningModeLabel, setScanningModeLabel] = useState<'gemini' | 'local'>('gemini');
-  const [localProgress, setLocalProgress] = useState<number>(0);
-  const [ocrEngineUsed, setOcrEngineUsed] = useState<'gemini' | 'local' | 'manual'>('gemini');
+  const [scanProgress, setScanProgress] = useState(0);
+  const [isManualMode, setIsManualMode] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -152,8 +143,6 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
     rawText: string;
     detectedNumbers: DetectedNumberItem[];
     subtotal: number;
-    taxAmount: number;
-    discountAmount: number;
     merchantName: string;
     date: string;
     totalAmount: number;
@@ -195,7 +184,7 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error(
-          'Browser atau tampilan ini tidak mendukung akses kamera langsung (getUserMedia). Gunakan tombol "Ambil Foto via Kamera Perangkat" atau Unggah File.'
+          'Browser atau tampilan ini tidak mendukung akses kamera langsung. Gunakan tombol "Ambil Foto via Kamera Perangkat" atau tab Unggah Foto.'
         );
       }
 
@@ -210,11 +199,9 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
           audio: false,
         });
       } catch {
-        // Fallback if specific facingMode/resolution constraint fails
         stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       }
 
-      // If modal closed or tab switched while permission prompt was open, stop stream immediately
       if (sessionId !== cameraSessionRef.current || !videoRef.current) {
         stream.getTracks().forEach((track) => track.stop());
         return;
@@ -226,7 +213,7 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
       try {
         await videoEl.play();
       } catch {
-        // Some browsers auto-play cleanly once metadata loads
+        // Metadata callback handles ready state
       }
       if (sessionId === cameraSessionRef.current && videoEl.readyState >= 2 && videoEl.videoWidth > 0) {
         setCameraReady(true);
@@ -236,16 +223,16 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
       const name = err?.name || '';
       if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
         setCameraError(
-          'Izin kamera ditolak oleh browser. Izinkan akses kamera di ikon gembok browser, atau gunakan "Kamera Perangkat" / tab Unggah File.'
+          'Izin kamera ditolak oleh browser. Izinkan akses kamera atau gunakan tombol "Ambil Foto via Kamera Perangkat".'
         );
       } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
         setCameraError(
-          'Perangkat kamera tidak terdeteksi di perangkat ini. Anda tetap bisa mengunggah foto struk melalui tab Unggah Foto.'
+          'Perangkat kamera tidak ditemukan. Gunakan tab Unggah Foto untuk memindai nota.'
         );
       } else {
         setCameraError(
           err?.message ||
-            'Kamera tidak dapat diakses pada browser ini. Gunakan tombol "Ambil Foto via Kamera Perangkat" di bawah atau Unggah Foto.'
+            'Kamera tidak dapat diakses. Gunakan tombol "Ambil Foto via Kamera Perangkat" atau tab Unggah Foto.'
         );
       }
     } finally {
@@ -254,6 +241,12 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
       }
     }
   }, [facingMode, stopCamera]);
+
+  useEffect(() => {
+    if (isOpen) {
+      warmUpLocalOcrWorker();
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen && activeMode === 'camera' && step === 'capture' && !imagePreview && !scanning) {
@@ -268,122 +261,65 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
 
   if (!isOpen) return null;
 
-  const applyScanData = (d: any, engine: 'gemini' | 'local') => {
-    const items: ScannedItem[] = Array.isArray(d.items) ? d.items : [];
-    const itemSummary = items
-      .filter((i) => i.name?.trim())
-      .map((i) => i.name)
-      .slice(0, 2)
-      .join(', ');
-    const merchant = d.merchantName || 'Toko / Pemasok';
-
-    const fallbackNumbers: DetectedNumberItem[] =
-      Array.isArray(d.detectedNumbers) && d.detectedNumbers.length > 0
-        ? d.detectedNumbers
-        : [
-            ...(Number(d.subtotal || 0) > 0
-              ? [
-                  {
-                    label: 'Subtotal',
-                    rawToken: formatRupiah(Number(d.subtotal)),
-                    value: Number(d.subtotal),
-                  },
-                ]
-              : []),
-            ...(Number(d.totalAmount || 0) > 0
-              ? [
-                  {
-                    label: 'Total Nota',
-                    rawToken: formatRupiah(Number(d.totalAmount)),
-                    value: Number(d.totalAmount),
-                  },
-                ]
-              : []),
-          ];
-
-    setOcrEngineUsed(engine);
-    setScanResult({
-      rawText: d.rawText || '',
-      detectedNumbers: fallbackNumbers,
-      subtotal: Number(d.subtotal || d.totalAmount || 0),
-      taxAmount: Number(d.taxAmount || 0),
-      discountAmount: Number(d.discountAmount || 0),
-      merchantName: merchant,
-      date: d.date || new Date().toISOString().split('T')[0],
-      totalAmount: Number(d.totalAmount || 0),
-      category: (d.category as TransactionCategory) || 'Belanja Bahan Baku',
-      paymentMethod: d.paymentMethod || 'Tunai',
-      referenceNo: d.referenceNo || 'OCR-' + Math.floor(100000 + Math.random() * 900000),
-      items,
-      confidenceScore: Number(d.confidenceScore || 0.9),
-      summaryNotes: d.summaryNotes || 'Hasil deteksi teks & angka OCR struk',
-      txType: 'expense',
-      ledgerDescription: `Struk: ${merchant}${itemSummary ? ` (${itemSummary})` : ''}`,
-    });
-    setStep('detected');
-  };
-
-  const processReceiptOcr = async (ocrImg: string) => {
+  const processInstantScan = async (ocrImg: string) => {
     setScanning(true);
-    setScanningModeLabel('gemini');
+    setScanProgress(10);
     setScanError(null);
     setScanResult(null);
-    try {
-      const res = await fetch('/api/ocr/scan-receipt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: ocrImg }),
-      });
-      const data = await parseApiResponse(res);
-      if (!res.ok || !data.success || !data.data) {
-        throw new Error(data.error || 'Gagal membaca teks dan angka dari gambar struk.');
-      }
+    setIsManualMode(false);
 
-      applyScanData(data.data, 'gemini');
+    try {
+      const d = await runLocalReceiptOcr(ocrImg, (pct) => {
+        setScanProgress(Math.max(10, Math.min(100, pct)));
+      });
+
+      const items: ScannedItem[] = Array.isArray(d.items) ? d.items : [];
+      const itemSummary = items
+        .filter((i) => i.name?.trim())
+        .map((i) => `${i.qty}x ${i.name}`)
+        .slice(0, 2)
+        .join(', ');
+      const merchant = d.merchantName || 'Toko / Pemasok';
+
+      setScanResult({
+        rawText: d.rawText || '',
+        detectedNumbers: Array.isArray(d.detectedNumbers) ? d.detectedNumbers : [],
+        subtotal: Number(d.subtotal || d.totalAmount || 0),
+        merchantName: merchant,
+        date: d.date || new Date().toISOString().split('T')[0],
+        totalAmount: Number(d.totalAmount || 0),
+        category: d.category || 'Belanja Bahan Baku',
+        paymentMethod: d.paymentMethod || 'Tunai',
+        referenceNo: d.referenceNo || 'NOTA-' + Math.floor(100000 + Math.random() * 900000),
+        items,
+        confidenceScore: Number(d.confidenceScore || 0.85),
+        summaryNotes: d.summaryNotes || 'Deteksi otomatis kuantitas, nama barang & harga',
+        txType: 'expense',
+        ledgerDescription: itemSummary
+          ? `Nota ${merchant}: ${itemSummary}`
+          : `Struk Belanja: ${merchant}`,
+      });
+      setStep('detected');
     } catch (err: any) {
       setScanError(
         err?.message ||
-          'Gagal membaca teks dan angka pada nota. Pastikan foto nota terlihat jelas, terang, dan tidak buram.'
+          'Teks atau harga pada foto nota belum terbaca jelas. Anda dapat Scan Ulang atau Isi Manual sambil melihat foto.'
       );
       setStep('capture');
     } finally {
       setScanning(false);
-    }
-  };
-
-  const processLocalOcr = async (ocrImg: string) => {
-    setScanning(true);
-    setScanningModeLabel('local');
-    setLocalProgress(5);
-    setScanError(null);
-    setScanResult(null);
-    try {
-      const data = await runLocalReceiptOcr(ocrImg, (pct) => {
-        setLocalProgress(Math.max(5, Math.min(100, pct)));
-      });
-      applyScanData(data, 'local');
-    } catch (err: any) {
-      setScanError(
-        err?.message ||
-          'OCR Lokal tidak menemukan teks yang jelas pada nota ini. Anda dapat mengedit nominal secara manual sambil melihat foto.'
-      );
-      setStep('capture');
-    } finally {
-      setScanning(false);
-      setLocalProgress(0);
+      setScanProgress(0);
     }
   };
 
   const openManualWithPhoto = () => {
     setScanError(null);
-    setOcrEngineUsed('manual');
+    setIsManualMode(true);
     setScanResult({
       rawText: '',
       detectedNumbers: [],
       subtotal: 0,
-      taxAmount: 0,
-      discountAmount: 0,
-      merchantName: 'Toko / Merchant',
+      merchantName: 'Toko / Pemasok',
       date: new Date().toISOString().split('T')[0],
       totalAmount: 0,
       category: 'Belanja Bahan Baku',
@@ -391,11 +327,11 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
       referenceNo: 'NOTA-' + Math.floor(100000 + Math.random() * 900000),
       items: [{ name: '', qty: 1, price: 0, total: 0 }],
       confidenceScore: 1,
-      summaryNotes: 'Pencatatan nota manual dengan lampiran foto struk',
+      summaryNotes: 'Pencatatan nota dari foto struk',
       txType: 'expense',
       ledgerDescription: '',
     });
-    setStep('bookkeeping');
+    setStep('detected');
   };
 
   const capturePhoto = () => {
@@ -403,14 +339,14 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
     const prepared = prepareImageFromVideo(videoRef.current);
     if (!prepared) {
       setCameraError(
-        'Kamera masih menyiapkan gambar. Tunggu sebentar hingga pratinjau kamera muncul sebelum mengambil foto.'
+        'Kamera masih menyiapkan gambar. Tunggu sebentar hingga pratinjau muncul.'
       );
       return;
     }
     setImagePreview(prepared.thumbImage);
     setOcrImagePayload(prepared.ocrImage);
     stopCamera();
-    processReceiptOcr(prepared.ocrImage);
+    void processInstantScan(prepared.ocrImage);
   };
 
   const handleSelectedFile = async (file: File) => {
@@ -420,7 +356,7 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
       setImagePreview(prepared.thumbImage);
       setOcrImagePayload(prepared.ocrImage);
       stopCamera();
-      await processReceiptOcr(prepared.ocrImage);
+      await processInstantScan(prepared.ocrImage);
     } catch (err: any) {
       setScanError(err?.message || 'Gagal memproses berkas gambar yang dipilih.');
     }
@@ -485,14 +421,16 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
     if (!scanResult) return;
     const itemSummary = scanResult.items
       .filter((i) => i.name.trim())
-      .map((i) => i.name)
-      .slice(0, 2)
+      .map((i) => `${i.qty}x ${i.name.trim()}`)
+      .slice(0, 3)
       .join(', ');
     setScanResult({
       ...scanResult,
       ledgerDescription:
         scanResult.ledgerDescription ||
-        `Struk: ${scanResult.merchantName}${itemSummary ? ` (${itemSummary})` : ''}`,
+        (itemSummary
+          ? `Nota ${scanResult.merchantName}: ${itemSummary}`
+          : `Struk: ${scanResult.merchantName}`),
     });
     setStep('bookkeeping');
   };
@@ -525,7 +463,7 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
           source: 'ocr_scan',
           paymentMethod: scanResult.paymentMethod || 'Tunai',
           referenceNo: scanResult.referenceNo,
-          notes: scanResult.summaryNotes || 'Hasil deteksi teks & angka OCR struk belanja',
+          notes: scanResult.summaryNotes || 'Hasil deteksi kuantitas, nama barang & harga nota',
           items: scanResult.items,
           receiptImage: imagePreview || undefined,
         }),
@@ -558,6 +496,7 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
     setOcrImagePayload(null);
     setScanResult(null);
     setScanError(null);
+    setIsManualMode(false);
     setStep('capture');
   };
 
@@ -568,14 +507,14 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
         <div className="bg-blue-700 px-6 py-4 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-white/15 rounded-xl">
-              <Camera className="w-5 h-5" />
+              <Zap className="w-5 h-5" />
             </div>
             <div>
               <h3 className="font-bold text-base leading-tight">
-                Scan Nota Belanja (Deteksi Teks &amp; Angka OCR)
+                Scan Nota Cepat (Tanpa AI &middot; Langsung Otomatis)
               </h3>
               <p className="text-xs text-blue-100">
-                Deteksi teks asli &amp; nominal angka pada foto struk sebelum diarahkan ke pencatatan buku kas
+                Deteksi otomatis kuantitas (Qty), nama barang, dan harga langsung di perangkat Anda
               </p>
             </div>
           </div>
@@ -595,8 +534,8 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
         <div className="px-6 py-3 bg-slate-50 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-800 grid grid-cols-3 gap-2 text-[11px] font-bold shrink-0">
           {[
             { id: 'capture', num: '1', label: 'Foto / Unggah Nota' },
-            { id: 'detected', num: '2', label: 'Deteksi Teks & Angka' },
-            { id: 'bookkeeping', num: '3', label: 'Pencatatan Buku Kas' },
+            { id: 'detected', num: '2', label: 'Qty, Nama & Harga' },
+            { id: 'bookkeeping', num: '3', label: 'Simpan Buku Kas' },
           ].map((s) => {
             const isActive = step === s.id;
             const isCompleted =
@@ -635,19 +574,11 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
                 <div className="flex flex-wrap items-center gap-2 pl-6">
                   <button
                     type="button"
-                    onClick={() => processLocalOcr(ocrImagePayload)}
-                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Cpu className="w-3.5 h-3.5" />
-                    Scan Offline (OCR Lokal)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => processReceiptOcr(ocrImagePayload)}
-                    className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold flex items-center gap-1.5 cursor-pointer"
+                    onClick={() => processInstantScan(ocrImagePayload)}
+                    className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold flex items-center gap-1.5 cursor-pointer"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
-                    Coba Lagi AI Gemini
+                    Scan Ulang
                   </button>
                   <button
                     type="button"
@@ -655,7 +586,7 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
                     className="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-rose-300 dark:border-rose-700 text-rose-800 dark:text-rose-200 font-semibold flex items-center gap-1.5 cursor-pointer"
                   >
                     <Edit3 className="w-3.5 h-3.5" />
-                    Isi Manual dari Foto
+                    Input Barang &amp; Harga Manual
                   </button>
                 </div>
               )}
@@ -729,36 +660,34 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
                       Foto nota siap dipindai
                     </div>
                     <p className="text-slate-500 dark:text-slate-400">
-                      Jika AI Gemini sedang sibuk, gunakan <strong>Scan Offline (OCR Lokal)</strong> langsung di perangkat Anda tanpa antre server AI.
+                      Klik Scan Ulang untuk mendeteksi kuantitas, nama barang &amp; harga, atau isi tabel barang langsung dari foto ini.
                     </p>
                     <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-1">
                       {ocrImagePayload && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => processLocalOcr(ocrImagePayload)}
-                            className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 cursor-pointer"
-                          >
-                            <Cpu className="w-3.5 h-3.5" />
-                            Scan Offline (OCR Lokal)
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => processReceiptOcr(ocrImagePayload)}
-                            className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold flex items-center gap-1.5 cursor-pointer"
-                          >
-                            <RefreshCw className="w-3.5 h-3.5" />
-                            Scan Ulang AI Gemini
-                          </button>
-                        </>
+                        <button
+                          type="button"
+                          onClick={() => processInstantScan(ocrImagePayload)}
+                          className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          Scan Ulang Nota
+                        </button>
                       )}
+                      <button
+                        type="button"
+                        onClick={openManualWithPhoto}
+                        className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        Isi Barang &amp; Harga
+                      </button>
                       <button
                         type="button"
                         onClick={handleReset}
                         className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-semibold flex items-center gap-1.5 cursor-pointer"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
-                        Ganti / Ambil Foto Lain
+                        Ganti Foto
                       </button>
                     </div>
                   </div>
@@ -837,7 +766,7 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
                       type="button"
                       disabled={!cameraReady}
                       onClick={capturePhoto}
-                      title={cameraReady ? 'Ambil Foto & Scan Nota' : 'Menunggu kamera siap'}
+                      title={cameraReady ? 'Ambil Foto & Deteksi Langsung' : 'Menunggu kamera siap'}
                       className={`w-16 h-16 rounded-full text-white flex items-center justify-center shadow-lg transition-all ring-4 ${
                         cameraReady
                           ? 'bg-blue-600 hover:bg-blue-700 hover:scale-105 active:scale-95 ring-blue-200 dark:ring-blue-900 cursor-pointer'
@@ -879,10 +808,10 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
                     <Upload className="w-6 h-6" />
                   </div>
                   <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100">
-                    Pilih atau Seret Foto Struk / Nota Belanja
+                    Pilih atau Seret Foto Struk / Nota
                   </h4>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
-                    Sistem otomatis mengoptimalkan ukuran foto lalu mendeteksi seluruh teks dan angka nominal pada nota sebelum dicatat ke buku kas (JPG, PNG, WebP).
+                    Langsung membaca <strong>kuantitas (Qty), nama barang, dan harga</strong> secara otomatis di perangkat tanpa menunggu server AI (JPG, PNG, WebP).
                   </p>
                   <input
                     ref={fileInputRef}
@@ -912,33 +841,29 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
               <div className="w-14 h-14 mx-auto rounded-full border-4 border-blue-200 dark:border-blue-900 border-t-blue-600 animate-spin" />
               <div>
                 <h4 className="text-base font-bold text-slate-800 dark:text-slate-100">
-                  {scanningModeLabel === 'local'
-                    ? `Mendeteksi Teks & Angka Secara Lokal (${localProgress}%)...`
-                    : 'Mendeteksi Teks & Angka dari Gambar Nota...'}
+                  Mendeteksi Kuantitas, Nama Barang &amp; Harga ({scanProgress}%)...
                 </h4>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  {scanningModeLabel === 'local'
-                    ? 'Memproses piksel nota langsung di browser (mode offline tanpa antre server AI).'
-                    : 'Membaca seluruh baris teks, nama toko, jumlah barang, serta angka nominal harga pada gambar.'}
+                  Membaca langsung gambar nota di perangkat Anda (cepat &amp; tanpa koneksi AI).
                 </p>
               </div>
             </div>
           )}
 
-          {/* STEP 2: VERIFY DETECTED TEXT & NUMBERS */}
+          {/* STEP 2: DETECTED QUANTITY, ITEM NAME & PRICE */}
           {step === 'detected' && scanResult && !scanning && (
             <div className="space-y-4">
-              {/* Side-by-side Image Preview + Raw Extracted OCR Text */}
+              {/* Foto Struk & Teks Terbaca */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {imagePreview && (
                   <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/70 p-2.5 flex flex-col">
                     <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1.5 px-1">
-                      Foto Struk Diunggah
+                      Foto Struk
                     </span>
                     <img
                       src={imagePreview}
                       alt="Pratinjau Struk"
-                      className="w-full max-h-56 object-contain rounded-lg bg-white"
+                      className="w-full max-h-52 object-contain rounded-lg bg-white"
                     />
                   </div>
                 )}
@@ -951,72 +876,49 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-[11px] font-bold text-blue-900 dark:text-blue-300 flex items-center gap-1.5">
                       <FileText className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                      Teks Asli Terdeteksi ({ocrEngineUsed === 'local' ? 'OCR Lokal' : 'AI OCR'})
+                      {isManualMode ? 'Ringkasan Input Manual' : 'Teks Nota Terdeteksi (Cepat)'}
                     </span>
-                    <span className="text-[11px] font-mono text-blue-700 dark:text-blue-400 font-semibold">
-                      Akurasi {(scanResult.confidenceScore * 100).toFixed(0)}%
-                    </span>
+                    {!isManualMode && (
+                      <span className="text-[11px] font-mono text-blue-700 dark:text-blue-400 font-semibold">
+                        Akurasi {(scanResult.confidenceScore * 100).toFixed(0)}%
+                      </span>
+                    )}
                   </div>
-                  <pre className="flex-1 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 text-[11px] font-mono text-slate-800 dark:text-slate-200 whitespace-pre-wrap max-h-52 overflow-y-auto leading-relaxed">
-                    {scanResult.rawText || '(Teks baris tidak terbaca — periksa angka terdeteksi di bawah)'}
+                  <pre className="flex-1 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 text-[11px] font-mono text-slate-800 dark:text-slate-200 whitespace-pre-wrap max-h-48 overflow-y-auto leading-relaxed">
+                    {scanResult.rawText ||
+                      '(Isi nama barang, kuantitas, dan harga pada tabel di bawah sesuai foto struk)'}
                   </pre>
                 </div>
               </div>
 
-              {/* Detected Numbers & Monetary Values */}
-              <div className="p-4 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/25 border border-emerald-200 dark:border-emerald-900/60 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-emerald-900 dark:text-emerald-300 flex items-center gap-1.5">
-                    <Hash className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                    Angka &amp; Nominal Terdeteksi dari Nota ({scanResult.detectedNumbers.length})
-                  </span>
-                  <span className="text-xs font-mono font-black text-emerald-800 dark:text-emerald-300">
-                    Total Terdeteksi: {formatRupiah(scanResult.totalAmount)}
-                  </span>
-                </div>
-
-                {scanResult.detectedNumbers.length > 0 && (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {scanResult.detectedNumbers.map((dn, idx) => (
-                      <div
-                        key={idx}
-                        className="bg-white dark:bg-slate-900 px-3 py-2 rounded-lg border border-emerald-200/80 dark:border-emerald-800/60 text-xs"
-                      >
-                        <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
-                          {dn.label}
-                        </div>
-                        <div className="font-mono font-bold text-slate-900 dark:text-white">
-                          {dn.rawToken}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Detected Line Items Table (Editable before booking) */}
+              {/* Detected Line Items Table: Qty, Nama Barang, Harga */}
               <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
-                    <ShoppingBag className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                    Rincian Item &amp; Harga Terdeteksi (Periksa / Ubah Jika Perlu)
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                    <ShoppingBag className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    Deteksi Kuantitas, Nama Barang &amp; Harga ({scanResult.items.length} item)
                   </span>
-                  <button
-                    type="button"
-                    onClick={addItemRow}
-                    className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
-                  >
-                    <Plus className="w-3 h-3" />
-                    Tambah Baris
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-mono font-black text-emerald-700 dark:text-emerald-400">
+                      Total: {formatRupiah(scanResult.totalAmount)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={addItemRow}
+                      className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      Tambah Barang
+                    </button>
+                  </div>
                 </div>
 
                 <div className="bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 overflow-x-auto">
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-300 text-[10px] uppercase font-semibold border-b border-slate-200 dark:border-slate-700">
                       <tr>
-                        <th className="py-1.5 px-2.5">Nama Barang</th>
                         <th className="py-1.5 px-2 text-center w-16">Qty</th>
+                        <th className="py-1.5 px-2.5">Nama Barang</th>
                         <th className="py-1.5 px-2.5 text-right w-28">Harga Satuan</th>
                         <th className="py-1.5 px-2.5 text-right w-28">Subtotal</th>
                         <th className="py-1.5 px-2 w-8"></th>
@@ -1026,20 +928,12 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
                       {scanResult.items.length === 0 ? (
                         <tr>
                           <td colSpan={5} className="py-4 text-center text-slate-400">
-                            Tidak ada rincian item terpisah — total nominal diambil langsung dari angka total nota.
+                            Belum ada baris barang terdeteksi otomatis. Klik &ldquo;Tambah Barang&rdquo; untuk menambahkan atau sesuaikan total nota di langkah berikutnya.
                           </td>
                         </tr>
                       ) : (
                         scanResult.items.map((item, idx) => (
                           <tr key={idx}>
-                            <td className="py-1.5 px-2">
-                              <input
-                                type="text"
-                                value={item.name}
-                                onChange={(e) => updateItem(idx, 'name', e.target.value)}
-                                className="w-full px-2 py-1 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-100"
-                              />
-                            </td>
                             <td className="py-1.5 px-1.5">
                               <input
                                 type="number"
@@ -1047,6 +941,15 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
                                 value={item.qty}
                                 onChange={(e) => updateItem(idx, 'qty', Number(e.target.value))}
                                 className="w-full px-1.5 py-1 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-100 text-center font-mono"
+                              />
+                            </td>
+                            <td className="py-1.5 px-2">
+                              <input
+                                type="text"
+                                value={item.name}
+                                placeholder="Nama barang"
+                                onChange={(e) => updateItem(idx, 'name', e.target.value)}
+                                className="w-full px-2 py-1 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-100"
                               />
                             </td>
                             <td className="py-1.5 px-1.5">
@@ -1094,7 +997,7 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
                   className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md transition-all flex items-center gap-2 cursor-pointer"
                 >
                   <BookOpen className="w-4 h-4" />
-                  <span>Arahkan ke Pencatatan Pembukuan</span>
+                  <span>Lanjut ke Pencatatan Buku Kas</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
@@ -1104,28 +1007,13 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
           {/* STEP 3: PENCATATAN KE BUKU KAS */}
           {step === 'bookkeeping' && scanResult && (
             <form onSubmit={handleSaveToLedger} className="space-y-4">
-              {ocrEngineUsed === 'manual' && imagePreview && (
-                <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 flex flex-col items-center">
-                  <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1.5 self-start">
-                    Referensi Foto Struk / Nota
-                  </span>
-                  <img
-                    src={imagePreview}
-                    alt="Referensi Struk"
-                    className="max-h-52 object-contain rounded-lg bg-white border border-slate-200 dark:border-slate-700"
-                  />
-                </div>
-              )}
-
               <div className="p-4 rounded-xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 flex items-center justify-between text-xs">
                 <div>
                   <div className="font-bold text-blue-900 dark:text-blue-200">
                     Siap Dicatat ke Buku Kas FinSight
                   </div>
                   <div className="text-blue-700 dark:text-blue-400 mt-0.5">
-                    {ocrEngineUsed === 'manual'
-                      ? 'Lengkapi keterangan dan nominal berdasarkan foto struk Anda, lalu simpan transaksi.'
-                      : 'Data sudah diisi otomatis dari hasil deteksi teks & angka nota. Periksa lalu simpan transaksi.'}
+                    Data kuantitas, nama barang, dan harga sudah siap disimpan ke buku kas.
                   </div>
                 </div>
                 <span className="font-mono font-black text-base text-blue-900 dark:text-white">
@@ -1230,7 +1118,7 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
 
                 <div>
                   <label className="text-slate-600 dark:text-slate-300 font-bold block mb-1">
-                    Nominal Transaksi (Rp) *
+                    Nominal Total Transaksi (Rp) *
                   </label>
                   <input
                     type="number"
@@ -1280,7 +1168,7 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
                   className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
-                  Kembali ke Hasil Deteksi
+                  Kembali ke Daftar Barang
                 </button>
 
                 <button
