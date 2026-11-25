@@ -74,7 +74,13 @@ export function getSupabaseClient(): SupabaseClient {
 
 function throwIfDbError(error: any, context: string): never {
   console.error(`[Supabase ${context}]`, error);
-  throw new Error(error?.message || `Gagal mengakses database (${context}).`);
+  const msg = String(error?.message || '');
+  if (error?.code === 'PGRST205' || msg.includes('schema cache')) {
+    throw new Error(
+      'Tabel database di Supabase belum dibuat atau cache skema belum diperbarui. Pastikan Anda sudah menjalankan isi supabase/schema.sql di SQL Editor pada project Supabase yang sama dengan SUPABASE_URL di Vercel, lalu jalankan: NOTIFY pgrst, \'reload schema\';'
+    );
+  }
+  throw new Error(msg || `Gagal mengakses database (${context}).`);
 }
 
 // -----------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Camera,
   Upload,
@@ -14,10 +14,12 @@ import {
   ArrowLeft,
   Hash,
   BookOpen,
+  RotateCcw,
 } from 'lucide-react';
 import { TransactionCategory, TransactionType } from '../types';
 import { playExpenseSound, playIncomeSound, sendBrowserNotification } from '../utils/notification';
 import { formatRupiah } from '../utils/exportReport';
+import { parseApiResponse } from '../utils/api';
 
 interface OCRScannerModalProps {
   isOpen: boolean;
@@ -39,6 +41,87 @@ interface DetectedNumberItem {
   value: number;
 }
 
+interface PreparedImagePair {
+  ocrImage: string;
+  thumbImage: string;
+}
+
+function renderScaledJpeg(
+  source: HTMLImageElement | HTMLVideoElement,
+  srcWidth: number,
+  srcHeight: number,
+  maxDimension: number,
+  quality: number
+): string {
+  const scale = Math.min(1, maxDimension / Math.max(srcWidth, srcHeight));
+  const targetWidth = Math.max(1, Math.round(srcWidth * scale));
+  const targetHeight = Math.max(1, Math.round(srcHeight * scale));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = targetWidth;
+  canvas.height = targetHeight;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('Browser tidak mendukung pemrosesan gambar kanvas.');
+  }
+
+  // Fill white background so transparent PNG receipts remain crisp in JPEG
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, targetWidth, targetHeight);
+  ctx.drawImage(source, 0, 0, targetWidth, targetHeight);
+  return canvas.toDataURL('image/jpeg', quality);
+}
+
+async function prepareImageFromFile(file: File): Promise<PreparedImagePair> {
+  const isImageMime = file.type.startsWith('image/');
+  const isImageExt = /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(file.name);
+  if (!isImageMime && !isImageExt) {
+    throw new Error('File yang dipilih bukan gambar. Unggah foto nota berformat JPG, PNG, atau WebP.');
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () =>
+        reject(
+          new Error(
+            'Gambar tidak dapat dibuka oleh browser (misalnya format HEIC). Konversi ke JPG/PNG atau gunakan foto langsung.'
+          )
+        );
+      el.src = objectUrl;
+    });
+
+    const width = img.naturalWidth || img.width;
+    const height = img.naturalHeight || img.height;
+    if (!width || !height) {
+      throw new Error('Dimensi foto nota tidak valid atau file rusak.');
+    }
+
+    let ocrImage = renderScaledJpeg(img, width, height, 1600, 0.86);
+    if (ocrImage.length > 3_200_000) {
+      ocrImage = renderScaledJpeg(img, width, height, 1200, 0.76);
+    }
+    const thumbImage = renderScaledJpeg(img, width, height, 900, 0.72);
+    return { ocrImage, thumbImage };
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+function prepareImageFromVideo(video: HTMLVideoElement): PreparedImagePair | null {
+  if (video.readyState < 2 || !video.videoWidth || !video.videoHeight) {
+    return null;
+  }
+  let ocrImage = renderScaledJpeg(video, video.videoWidth, video.videoHeight, 1600, 0.88);
+  if (ocrImage.length > 3_200_000) {
+    ocrImage = renderScaledJpeg(video, video.videoWidth, video.videoHeight, 1200, 0.78);
+  }
+  const thumbImage = renderScaledJpeg(video, video.videoWidth, video.videoHeight, 900, 0.74);
+  return { ocrImage, thumbImage };
+}
+
 export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
   isOpen,
   onClose,
@@ -48,9 +131,13 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
   const [activeMode, setActiveMode] = useState<'camera' | 'upload'>('upload');
   const [step, setStep] = useState<'capture' | 'detected' | 'bookkeeping'>('capture');
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [startingCamera, setStartingCamera] = useState(false);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
+  const [isDragging, setIsDragging] = useState(false);
 
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [ocrImagePayload, setOcrImagePayload] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -76,40 +163,91 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const cameraSessionRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const nativeCameraInputRef = useRef<HTMLInputElement | null>(null);
 
-  const startCamera = async () => {
-    setCameraError(null);
-    try {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-      }
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: facingMode },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-      }
-    } catch {
-      setCameraError(
-        'Kamera tidak dapat diakses atau diblokir oleh browser. Silakan unggah foto struk/nota melalui tab Unggah File.'
-      );
-      setActiveMode('upload');
-    }
-  };
-
-  const stopCamera = () => {
+  const stopCamera = useCallback(() => {
+    cameraSessionRef.current += 1;
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
-  };
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setCameraReady(false);
+  }, []);
+
+  const startCamera = useCallback(async () => {
+    setCameraError(null);
+    setCameraReady(false);
+    setStartingCamera(true);
+    stopCamera();
+    const sessionId = cameraSessionRef.current;
+
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error(
+          'Browser atau tampilan ini tidak mendukung akses kamera langsung (getUserMedia). Gunakan tombol "Ambil Foto via Kamera Perangkat" atau Unggah File.'
+        );
+      }
+
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: facingMode },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false,
+        });
+      } catch {
+        // Fallback if specific facingMode/resolution constraint fails
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      }
+
+      // If modal closed or tab switched while permission prompt was open, stop stream immediately
+      if (sessionId !== cameraSessionRef.current || !videoRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+
+      streamRef.current = stream;
+      const videoEl = videoRef.current;
+      videoEl.srcObject = stream;
+      try {
+        await videoEl.play();
+      } catch {
+        // Some browsers auto-play cleanly once metadata loads
+      }
+      if (sessionId === cameraSessionRef.current && videoEl.readyState >= 2 && videoEl.videoWidth > 0) {
+        setCameraReady(true);
+      }
+    } catch (err: any) {
+      if (sessionId !== cameraSessionRef.current) return;
+      const name = err?.name || '';
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        setCameraError(
+          'Izin kamera ditolak oleh browser. Izinkan akses kamera di ikon gembok browser, atau gunakan "Kamera Perangkat" / tab Unggah File.'
+        );
+      } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        setCameraError(
+          'Perangkat kamera tidak terdeteksi di perangkat ini. Anda tetap bisa mengunggah foto struk melalui tab Unggah Foto.'
+        );
+      } else {
+        setCameraError(
+          err?.message ||
+            'Kamera tidak dapat diakses pada browser ini. Gunakan tombol "Ambil Foto via Kamera Perangkat" di bawah atau Unggah Foto.'
+        );
+      }
+    } finally {
+      if (sessionId === cameraSessionRef.current) {
+        setStartingCamera(false);
+      }
+    }
+  }, [facingMode, stopCamera]);
 
   useEffect(() => {
     if (isOpen && activeMode === 'camera' && step === 'capture' && !imagePreview && !scanning) {
@@ -120,40 +258,11 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
     return () => {
       stopCamera();
     };
-  }, [isOpen, activeMode, facingMode, imagePreview, step, scanning]);
+  }, [isOpen, activeMode, facingMode, imagePreview, step, scanning, startCamera, stopCamera]);
 
   if (!isOpen) return null;
 
-  const capturePhoto = () => {
-    if (!videoRef.current) return;
-    const canvas = document.createElement('canvas');
-    canvas.width = videoRef.current.videoWidth || 640;
-    canvas.height = videoRef.current.videoHeight || 480;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-      setImagePreview(dataUrl);
-      stopCamera();
-      processReceiptOcr(dataUrl);
-    }
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        setImagePreview(dataUrl);
-        stopCamera();
-        processReceiptOcr(dataUrl);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const processReceiptOcr = async (base64Img: string) => {
+  const processReceiptOcr = async (ocrImg: string) => {
     setScanning(true);
     setScanError(null);
     setScanResult(null);
@@ -161,9 +270,9 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
       const res = await fetch('/api/ocr/scan-receipt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: base64Img }),
+        body: JSON.stringify({ imageBase64: ocrImg }),
       });
-      const data = await res.json();
+      const data = await parseApiResponse(res);
       if (!res.ok || !data.success || !data.data) {
         throw new Error(data.error || 'Gagal membaca teks dan angka dari gambar struk.');
       }
@@ -177,16 +286,29 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
         .join(', ');
       const merchant = d.merchantName || 'Toko / Pemasok';
 
-      const fallbackNumbers: DetectedNumberItem[] = Array.isArray(d.detectedNumbers) && d.detectedNumbers.length > 0
-        ? d.detectedNumbers
-        : [
-            ...(Number(d.subtotal || 0) > 0
-              ? [{ label: 'Subtotal', rawToken: formatRupiah(Number(d.subtotal)), value: Number(d.subtotal) }]
-              : []),
-            ...(Number(d.totalAmount || 0) > 0
-              ? [{ label: 'Total Nota', rawToken: formatRupiah(Number(d.totalAmount)), value: Number(d.totalAmount) }]
-              : []),
-          ];
+      const fallbackNumbers: DetectedNumberItem[] =
+        Array.isArray(d.detectedNumbers) && d.detectedNumbers.length > 0
+          ? d.detectedNumbers
+          : [
+              ...(Number(d.subtotal || 0) > 0
+                ? [
+                    {
+                      label: 'Subtotal',
+                      rawToken: formatRupiah(Number(d.subtotal)),
+                      value: Number(d.subtotal),
+                    },
+                  ]
+                : []),
+              ...(Number(d.totalAmount || 0) > 0
+                ? [
+                    {
+                      label: 'Total Nota',
+                      rawToken: formatRupiah(Number(d.totalAmount)),
+                      value: Number(d.totalAmount),
+                    },
+                  ]
+                : []),
+            ];
 
       setScanResult({
         rawText: d.rawText || '',
@@ -209,12 +331,58 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
       setStep('detected');
     } catch (err: any) {
       setScanError(
-        err.message ||
+        err?.message ||
           'Gagal membaca teks dan angka pada nota. Pastikan foto nota terlihat jelas, terang, dan tidak buram.'
       );
       setStep('capture');
     } finally {
       setScanning(false);
+    }
+  };
+
+  const capturePhoto = () => {
+    if (!videoRef.current) return;
+    const prepared = prepareImageFromVideo(videoRef.current);
+    if (!prepared) {
+      setCameraError(
+        'Kamera masih menyiapkan gambar. Tunggu sebentar hingga pratinjau kamera muncul sebelum mengambil foto.'
+      );
+      return;
+    }
+    setImagePreview(prepared.thumbImage);
+    setOcrImagePayload(prepared.ocrImage);
+    stopCamera();
+    processReceiptOcr(prepared.ocrImage);
+  };
+
+  const handleSelectedFile = async (file: File) => {
+    setScanError(null);
+    try {
+      const prepared = await prepareImageFromFile(file);
+      setImagePreview(prepared.thumbImage);
+      setOcrImagePayload(prepared.ocrImage);
+      stopCamera();
+      await processReceiptOcr(prepared.ocrImage);
+    } catch (err: any) {
+      setScanError(err?.message || 'Gagal memproses berkas gambar yang dipilih.');
+    }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) {
+      await handleSelectedFile(file);
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      await handleSelectedFile(file);
     }
   };
 
@@ -305,7 +473,7 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
         }),
       });
 
-      const data = await res.json();
+      const data = await parseApiResponse(res);
       if (!res.ok) throw new Error(data.error || 'Gagal menyimpan transaksi ke buku kas.');
 
       if (scanResult.txType === 'income') {
@@ -321,7 +489,7 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
       handleReset();
       onClose();
     } catch (err: any) {
-      setScanError(err.message);
+      setScanError(err?.message || 'Gagal menyimpan transaksi ke buku kas.');
     } finally {
       setSaving(false);
     }
@@ -329,12 +497,10 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
 
   const handleReset = () => {
     setImagePreview(null);
+    setOcrImagePayload(null);
     setScanResult(null);
     setScanError(null);
     setStep('capture');
-    if (activeMode === 'camera') {
-      startCamera();
-    }
   };
 
   return (
@@ -407,11 +573,11 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
                 <span>{scanError}</span>
               </div>
-              {imagePreview && !scanning && (
+              {ocrImagePayload && !scanning && (
                 <button
                   type="button"
-                  onClick={() => processReceiptOcr(imagePreview)}
-                  className="px-2.5 py-1 rounded-lg bg-rose-600 text-white font-semibold shrink-0 cursor-pointer"
+                  onClick={() => processReceiptOcr(ocrImagePayload)}
+                  className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold shrink-0 cursor-pointer"
                 >
                   Scan Ulang
                 </button>
@@ -429,7 +595,9 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
                     setActiveMode('upload');
                     stopCamera();
                     setImagePreview(null);
+                    setOcrImagePayload(null);
                     setScanError(null);
+                    setCameraError(null);
                   }}
                   className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                     activeMode === 'upload'
@@ -446,7 +614,9 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
                   onClick={() => {
                     setActiveMode('camera');
                     setImagePreview(null);
+                    setOcrImagePayload(null);
                     setScanError(null);
+                    setCameraError(null);
                   }}
                   className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                     activeMode === 'camera'
@@ -459,10 +629,85 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
                 </button>
               </div>
 
-              {activeMode === 'camera' && (
+              {/* Hidden native camera input fallback */}
+              <input
+                ref={nativeCameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+
+              {/* Preview when previous scan attempt failed */}
+              {imagePreview && (
+                <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 flex flex-col sm:flex-row items-center gap-4">
+                  <img
+                    src={imagePreview}
+                    alt="Pratinjau Nota"
+                    className="w-28 h-28 object-contain rounded-lg bg-white border border-slate-200 dark:border-slate-700 shrink-0"
+                  />
+                  <div className="flex-1 text-xs space-y-2 text-center sm:text-left">
+                    <div className="font-bold text-slate-800 dark:text-slate-100">
+                      Foto nota siap dipindai ulang
+                    </div>
+                    <p className="text-slate-500 dark:text-slate-400">
+                      Tekan "Scan Ulang Nota Ini" untuk mencoba deteksi teks &amp; angka kembali, atau ganti foto lain.
+                    </p>
+                    <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-1">
+                      {ocrImagePayload && (
+                        <button
+                          type="button"
+                          onClick={() => processReceiptOcr(ocrImagePayload)}
+                          className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          Scan Ulang Nota Ini
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleReset}
+                        className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-semibold flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        Ganti / Ambil Foto Lain
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeMode === 'camera' && !imagePreview && (
                 <div className="space-y-4">
                   <div className="relative aspect-4/3 sm:aspect-16/10 bg-slate-900 rounded-2xl overflow-hidden flex items-center justify-center border-2 border-dashed border-blue-400/50">
-                    <video ref={videoRef} playsInline muted className="w-full h-full object-cover" />
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      onLoadedMetadata={() => {
+                        if (videoRef.current && videoRef.current.videoWidth > 0) {
+                          setCameraReady(true);
+                        }
+                      }}
+                      onCanPlay={() => {
+                        if (videoRef.current && videoRef.current.videoWidth > 0) {
+                          setCameraReady(true);
+                        }
+                      }}
+                      className="w-full h-full object-cover"
+                    />
+
+                    {!cameraReady && !cameraError && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/75 text-white text-xs gap-2 p-4 text-center">
+                        <div className="w-7 h-7 rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />
+                        <span>
+                          {startingCamera ? 'Mengaktifkan kamera...' : 'Menunggu sinyal gambar kamera...'}
+                        </span>
+                      </div>
+                    )}
+
                     <button
                       type="button"
                       onClick={() =>
@@ -476,37 +721,81 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
                   </div>
 
                   {cameraError && (
-                    <div className="p-3 bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-xs rounded-xl flex items-start gap-2">
-                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                      <span>{cameraError}</span>
+                    <div className="p-3.5 bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-xs rounded-xl space-y-2.5">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                        <span>{cameraError}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2 pl-6">
+                        <button
+                          type="button"
+                          onClick={startCamera}
+                          className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold cursor-pointer"
+                        >
+                          Coba Aktifkan Kamera Lagi
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => nativeCameraInputRef.current?.click()}
+                          className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold cursor-pointer"
+                        >
+                          Ambil Foto via Kamera Perangkat
+                        </button>
+                      </div>
                     </div>
                   )}
 
-                  <div className="flex items-center justify-center pt-1">
+                  <div className="flex flex-col items-center justify-center gap-2 pt-1">
                     <button
                       type="button"
+                      disabled={!cameraReady}
                       onClick={capturePhoto}
-                      className="w-16 h-16 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all ring-4 ring-blue-200 dark:ring-blue-900 cursor-pointer"
+                      title={cameraReady ? 'Ambil Foto & Scan Nota' : 'Menunggu kamera siap'}
+                      className={`w-16 h-16 rounded-full text-white flex items-center justify-center shadow-lg transition-all ring-4 ${
+                        cameraReady
+                          ? 'bg-blue-600 hover:bg-blue-700 hover:scale-105 active:scale-95 ring-blue-200 dark:ring-blue-900 cursor-pointer'
+                          : 'bg-slate-400 ring-slate-200 dark:ring-slate-800 cursor-not-allowed opacity-70'
+                      }`}
                     >
                       <Camera className="w-7 h-7" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => nativeCameraInputRef.current?.click()}
+                      className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                    >
+                      Atau buka aplikasi kamera perangkat langsung
                     </button>
                   </div>
                 </div>
               )}
 
-              {activeMode === 'upload' && (
+              {activeMode === 'upload' && !imagePreview && (
                 <div
                   onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-500 rounded-2xl p-10 text-center cursor-pointer transition-colors bg-slate-50/60 dark:bg-slate-800/40 hover:bg-blue-50/30 dark:hover:bg-slate-800"
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                  }}
+                  onDrop={handleDrop}
+                  className={`border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-colors ${
+                    isDragging
+                      ? 'border-blue-500 bg-blue-50/70 dark:bg-blue-950/30'
+                      : 'border-slate-300 dark:border-slate-700 hover:border-blue-500 bg-slate-50/60 dark:bg-slate-800/40 hover:bg-blue-50/30 dark:hover:bg-slate-800'
+                  }`}
                 >
                   <div className="w-12 h-12 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center mx-auto mb-3">
                     <Upload className="w-6 h-6" />
                   </div>
                   <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100">
-                    Pilih Foto Struk / Nota Belanja
+                    Pilih atau Seret Foto Struk / Nota Belanja
                   </h4>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
-                    Sistem mendeteksi teks asli serta seluruh angka nominal pada nota terlebih dahulu, lalu mengarahkannya ke pencatatan buku kas (JPG, PNG, WebP).
+                    Sistem otomatis mengoptimalkan ukuran foto lalu mendeteksi seluruh teks dan angka nominal pada nota sebelum dicatat ke buku kas (JPG, PNG, WebP).
                   </p>
                   <input
                     ref={fileInputRef}
@@ -517,7 +806,11 @@ export const OCRScannerModal: React.FC<OCRScannerModalProps> = ({
                   />
                   <button
                     type="button"
-                    className="mt-4 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      fileInputRef.current?.click();
+                    }}
+                    className="mt-4 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs cursor-pointer"
                   >
                     Pilih Berkas Gambar
                   </button>

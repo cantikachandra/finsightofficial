@@ -17,6 +17,12 @@ export async function parseApiResponse<T = any>(res: Response): Promise<T> {
     }
   }
 
+  if (res.status === 413) {
+    throw new Error(
+      'Ukuran foto nota terlalu besar untuk diproses server (maksimal 4 MB). Silakan kompres atau ambil ulang foto dengan resolusi lebih kecil.'
+    );
+  }
+
   throw new Error(
     `Layanan API tidak merespons dengan format JSON (HTTP ${res.status}). Pastikan server backend berjalan dengan benar.`
   );

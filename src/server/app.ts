@@ -195,6 +195,174 @@ function getGeminiClient(): GoogleGenAI | null {
   });
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function extractGeminiErrorInfo(err: any): { status: number; message: string; codeText: string } {
+  const rawMessage = String(err?.message || err || '');
+  let status = Number(err?.status || err?.code || 0);
+  let message = rawMessage;
+  let codeText = String(err?.statusText || '');
+
+  // GoogleGenAI often puts serialized JSON inside err.message
+  const jsonStart = rawMessage.indexOf('{');
+  if (jsonStart !== -1) {
+    try {
+      const parsed = JSON.parse(rawMessage.slice(jsonStart));
+      const inner = parsed?.error || parsed;
+      if (inner?.code && !status) status = Number(inner.code);
+      if (inner?.message) message = String(inner.message);
+      if (inner?.status) codeText = String(inner.status);
+    } catch {
+      // keep raw message
+    }
+  }
+
+  return { status: status || 500, message, codeText };
+}
+
+function mapGeminiError(err: any): { status: number; message: string } {
+  const info = extractGeminiErrorInfo(err);
+  const upperCode = info.codeText.toUpperCase();
+  const upperMsg = info.message.toUpperCase();
+
+  if (info.status === 400 && (upperMsg.includes('API_KEY') || upperCode.includes('INVALID_ARGUMENT'))) {
+    if (upperMsg.includes('API_KEY') || upperMsg.includes('KEY')) {
+      return {
+        status: 400,
+        message:
+          'API key Gemini tidak valid atau belum aktif. Periksa GEMINI_API_KEY pada pengaturan environment server / Settings > Secrets.',
+      };
+    }
+    return {
+      status: 400,
+      message: `Format gambar atau permintaan OCR tidak valid: ${info.message}`,
+    };
+  }
+
+  if (info.status === 403 || upperCode === 'PERMISSION_DENIED') {
+    return {
+      status: 403,
+      message:
+        'Akses ke layanan AI Gemini ditolak (403). Pastikan GEMINI_API_KEY memiliki izin aktif pada Settings > Secrets atau environment Vercel.',
+    };
+  }
+
+  if (info.status === 404 || upperCode === 'NOT_FOUND') {
+    return {
+      status: 404,
+      message: 'Model AI OCR tidak ditemukan atau tidak didukung.',
+    };
+  }
+
+  if (info.status === 429 || upperCode === 'RESOURCE_EXHAUSTED') {
+    return {
+      status: 429,
+      message:
+        'Kuota permintaan AI Gemini sedang penuh (429). Silakan tunggu beberapa detik lalu coba scan ulang.',
+    };
+  }
+
+  if (info.status === 503 || upperCode === 'UNAVAILABLE') {
+    return {
+      status: 503,
+      message:
+        'Server AI Gemini sedang mengalami lonjakan trafik sementara (503). Silakan klik "Scan Ulang" beberapa detik lagi.',
+    };
+  }
+
+  return {
+    status: 502,
+    message: `Gagal terhubung ke layanan AI Gemini: ${info.message || 'kesalahan tidak diketahui'}`,
+  };
+}
+
+async function generateGeminiWithRetry(
+  ai: GoogleGenAI,
+  params: { contents: any; config?: Record<string, any> }
+) {
+  const modelPlan: Array<{ model: string; thinkingLevel: ThinkingLevel }> = [
+    { model: 'gemini-4-hydrogen', thinkingLevel: ThinkingLevel.LOW },
+    { model: 'gemini-4-hydrogen', thinkingLevel: ThinkingLevel.LOW },
+    { model: 'gemini-3.1-flash-lite', thinkingLevel: ThinkingLevel.MINIMAL },
+  ];
+
+  let lastError: any;
+  for (let i = 0; i < modelPlan.length; i++) {
+    const step = modelPlan[i];
+    try {
+      const mergedConfig = {
+        ...(params.config || {}),
+        thinkingConfig: { thinkingLevel: step.thinkingLevel },
+      };
+      return await ai.models.generateContent({
+        model: step.model,
+        contents: params.contents,
+        config: mergedConfig,
+      });
+    } catch (err: any) {
+      lastError = err;
+      const info = extractGeminiErrorInfo(err);
+      const isTransient =
+        info.status === 503 ||
+        info.status === 429 ||
+        info.status >= 500 ||
+        info.codeText.toUpperCase() === 'UNAVAILABLE';
+      if (!isTransient && info.status !== 404) {
+        throw err;
+      }
+      if (i < modelPlan.length - 1) {
+        await sleep(650 * (i + 1));
+      }
+    }
+  }
+  throw lastError;
+}
+
+function parseNumericToken(val: any): number {
+  if (typeof val === 'number') return Number.isFinite(val) ? val : 0;
+  if (typeof val !== 'string') return 0;
+  const cleaned = val.replace(/[^\d.,-]/g, '').trim();
+  if (!cleaned) return 0;
+  // Handle Indonesian thousand separators like "25.000" or "1.250.000"
+  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(cleaned)) {
+    return Number(cleaned.replace(/\./g, '').replace(',', '.')) || 0;
+  }
+  // Handle US/comma thousand separators like "25,000"
+  if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(cleaned)) {
+    return Number(cleaned.replace(/,/g, '')) || 0;
+  }
+  const normalized = cleaned.replace(',', '.');
+  const num = Number(normalized);
+  return Number.isFinite(num) ? num : 0;
+}
+
+function extractNumbersFromRawText(rawText: string): Array<{ label: string; rawToken: string; value: number }> {
+  if (!rawText) return [];
+  const results: Array<{ label: string; rawToken: string; value: number }> = [];
+  const seen = new Set<string>();
+  const lines = rawText.split(/\r?\n/);
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const matches = trimmed.match(/(?:Rp\.?\s*)?\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?|(?:Rp\.?\s*)\d+/gi);
+    if (!matches) continue;
+    for (const token of matches) {
+      const val = Math.round(parseNumericToken(token));
+      if (val <= 0) continue;
+      const key = `${token}|${val}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const label = trimmed.replace(token, '').replace(/[:\-=]+$/, '').trim().slice(0, 40) || 'Nominal Nota';
+      results.push({ label, rawToken: token.trim(), value: val });
+      if (results.length >= 20) return results;
+    }
+  }
+  return results;
+}
+
 function asyncHandler(
   fn: (req: Request, res: Response, next: NextFunction) => Promise<any> | any
 ) {
@@ -902,7 +1070,7 @@ app.get(
 app.post(
   '/api/ocr/scan-receipt',
   asyncHandler(async (req, res) => {
-    const { imageBase64, mimeType } = req.body;
+    const { imageBase64, mimeType } = req.body || {};
 
     if (!imageBase64 || typeof imageBase64 !== 'string') {
       return res.status(400).json({ error: 'Foto struk/nota tidak ditemukan.' });
@@ -915,138 +1083,202 @@ app.post(
       });
     }
 
-    const mimeMatch = imageBase64.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,/);
-    const detectedMime = mimeMatch?.[1] || mimeType || 'image/jpeg';
-    const base64Clean = imageBase64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, '');
+    const mimeMatch = imageBase64.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,/i);
+    let detectedMime = (mimeMatch?.[1] || mimeType || 'image/jpeg').toLowerCase();
+    if (detectedMime === 'image/jpg') detectedMime = 'image/jpeg';
+    const supportedMimes = new Set([
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'image/gif',
+      'image/heic',
+      'image/heif',
+    ]);
+    if (!supportedMimes.has(detectedMime)) {
+      return res.status(400).json({
+        error: `Format gambar (${detectedMime}) tidak didukung. Gunakan foto JPG, PNG, atau WebP.`,
+      });
+    }
 
-    const prompt = `Anda adalah mesin OCR (Optical Character Recognition) akuntansi presisi tinggi untuk membaca struk belanja, faktur, bon toko, dan nota transaksi Indonesia.
-Tugas Anda WAJIB mengekstrak SEMUA teks dan SEMUA angka/nominal yang benar-benar tercetak pada gambar ini.
+    const base64Clean = imageBase64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/i, '').trim();
+    if (!base64Clean || base64Clean.length < 32) {
+      return res.status(400).json({ error: 'Data gambar struk tidak valid atau kosong.' });
+    }
+
+    const prompt = `Anda adalah mesin OCR (Optical Character Recognition) akuntansi presisi tinggi untuk membaca struk belanja, faktur, bon toko, nota tulis tangan, maupun nota transaksi Indonesia.
+Tugas Anda WAJIB mengekstrak SEMUA teks dan SEMUA angka/nominal yang benar-benar terlihat tercetak/tertulis pada gambar ini.
 Aturan ketat:
-1. Isi "rawText" dengan transkripsi lengkap baris demi baris seluruh teks dan angka yang terlihat apa adanya pada nota. Jika gambar tidak memuat teks/nota yang dapat dibaca, kosongkan "rawText".
-2. Isi "detectedNumbers" dengan daftar setiap angka/nominal penting yang terdeteksi (misalnya: Subtotal, Diskon, PPN/Pajak, Biaya Layanan, Total Bayar, Tunai/Kembalian, No. Nota, serta setiap harga item), masing-masing beserta label, rawToken persis seperti tertulis, dan value numeriknya.
-3. Konversi setiap harga/nominal ke integer Rupiah (tanpa Rp/titik pemisah ribuan, contoh "25.000" -> 25000).
-4. Untuk setiap baris barang di "items", pastikan "name", "qty", "price" (harga satuan), dan "total" sesuai dengan angka yang tertulis di gambar.
-5. Untuk "totalAmount", gunakan angka GRAND TOTAL / TOTAL BAYAR pada struk; jika tidak tertulis terpisah, jumlahkan total seluruh item.
-6. Pilih kategori paling relevan: "Belanja Bahan Baku", "Operasional", "Sewa Tempat & Listrik", "Peralatan & Aset", atau "Lain-lain".
+1. Isi "rawText" dengan transkripsi lengkap baris demi baris seluruh teks dan angka yang terlihat apa adanya pada nota. Jika gambar tidak memuat teks/angka yang dapat dibaca, kosongkan "rawText".
+2. Isi "detectedNumbers" dengan daftar setiap angka/nominal penting yang terdeteksi (misalnya: Subtotal, Diskon, PPN/Pajak, Biaya Layanan, Total Bayar, Tunai/Kembalian, No. Nota, serta setiap harga item), masing-masing beserta "label", "rawToken" persis seperti tertulis, dan "value" numeriknya.
+3. Konversi setiap harga/nominal ke angka Rupiah (tanpa Rp/titik pemisah ribuan, contoh "25.000" -> 25000).
+4. Untuk setiap baris barang di "items", pastikan "name", "qty", "price" (harga satuan), dan "total" sesuai dengan angka yang tertulis di gambar. Jika hanya ada total nota tanpa rincian barang, kembalikan array "items": [].
+5. Untuk "totalAmount", gunakan angka GRAND TOTAL / TOTAL BAYAR pada struk; jika tidak tertulis terpisah, jumlahkan total seluruh item atau gunakan nominal utama terbesar yang terdeteksi.
+6. Pilih kategori paling relevan: "Belanja Bahan Baku", "Operasional", "Sewa Tempat & Listrik", "Peralatan & Aset", "Penjualan Tunai", "Penjualan Non-Tunai", atau "Lain-lain".
 7. Pilih metode bayar dari: "Tunai", "Transfer Bank", "E-Wallet", "Kartu".`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-4-hydrogen',
-      contents: {
-        parts: [
-          {
-            inlineData: {
-              mimeType: detectedMime,
-              data: base64Clean,
-            },
-          },
-          { text: prompt },
-        ],
-      },
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            rawText: {
-              type: Type.STRING,
-              description:
-                'Seluruh teks dan angka asli baris demi baris yang terbaca pada gambar struk/nota.',
-            },
-            detectedNumbers: {
-              type: Type.ARRAY,
-              description: 'Daftar angka dan nominal penting yang terdeteksi di gambar nota.',
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  label: {
-                    type: Type.STRING,
-                    description: 'Keterangan angka (misal: Total Bayar, Subtotal, PPN, Item 1).',
-                  },
-                  rawToken: {
-                    type: Type.STRING,
-                    description: 'Teks angka persis seperti di struk (misal: Rp 45.000).',
-                  },
-                  value: { type: Type.NUMBER, description: 'Nilai numerik hasil pembacaan.' },
-                },
-                required: ['label', 'rawToken', 'value'],
+    let response;
+    try {
+      response = await generateGeminiWithRetry(ai, {
+        contents: {
+          parts: [
+            {
+              inlineData: {
+                mimeType: detectedMime,
+                data: base64Clean,
               },
             },
-            merchantName: {
-              type: Type.STRING,
-              description: 'Nama toko, merchant, atau penjual yang tercetak pada struk.',
-            },
-            date: {
-              type: Type.STRING,
-              description:
-                'Tanggal struk dalam format YYYY-MM-DD (gunakan tanggal hari ini jika tidak tercantum).',
-            },
-            subtotal: { type: Type.INTEGER },
-            taxAmount: { type: Type.INTEGER },
-            discountAmount: { type: Type.INTEGER },
-            totalAmount: { type: Type.INTEGER },
-            category: { type: Type.STRING },
-            paymentMethod: { type: Type.STRING },
-            referenceNo: { type: Type.STRING },
-            items: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  name: { type: Type.STRING },
-                  qty: { type: Type.NUMBER },
-                  price: { type: Type.INTEGER },
-                  total: { type: Type.INTEGER },
-                },
-                required: ['name', 'qty', 'price', 'total'],
-              },
-            },
-            confidenceScore: { type: Type.NUMBER },
-            summaryNotes: { type: Type.STRING },
-          },
-          required: ['rawText', 'detectedNumbers', 'merchantName', 'totalAmount', 'items'],
+            { text: prompt },
+          ],
         },
-      },
-    });
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              rawText: {
+                type: Type.STRING,
+                description:
+                  'Seluruh teks dan angka asli baris demi baris yang terbaca pada gambar struk/nota.',
+              },
+              detectedNumbers: {
+                type: Type.ARRAY,
+                description: 'Daftar angka dan nominal penting yang terdeteksi di gambar nota.',
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    label: {
+                      type: Type.STRING,
+                      description: 'Keterangan angka (misal: Total Bayar, Subtotal, PPN, Item 1).',
+                    },
+                    rawToken: {
+                      type: Type.STRING,
+                      description: 'Teks angka persis seperti di struk (misal: Rp 45.000).',
+                    },
+                    value: { type: Type.NUMBER, description: 'Nilai numerik hasil pembacaan.' },
+                  },
+                  required: ['label', 'rawToken', 'value'],
+                },
+              },
+              merchantName: {
+                type: Type.STRING,
+                description: 'Nama toko, merchant, atau penjual yang tercetak pada struk.',
+              },
+              date: {
+                type: Type.STRING,
+                description:
+                  'Tanggal struk dalam format YYYY-MM-DD (gunakan tanggal hari ini jika tidak tercantum).',
+              },
+              subtotal: { type: Type.NUMBER },
+              taxAmount: { type: Type.NUMBER },
+              discountAmount: { type: Type.NUMBER },
+              totalAmount: { type: Type.NUMBER },
+              category: { type: Type.STRING },
+              paymentMethod: { type: Type.STRING },
+              referenceNo: { type: Type.STRING },
+              items: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    name: { type: Type.STRING },
+                    qty: { type: Type.NUMBER },
+                    price: { type: Type.NUMBER },
+                    total: { type: Type.NUMBER },
+                  },
+                  required: ['name', 'qty', 'price', 'total'],
+                },
+              },
+              confidenceScore: { type: Type.NUMBER },
+              summaryNotes: { type: Type.STRING },
+            },
+            required: ['rawText', 'merchantName', 'totalAmount', 'items'],
+          },
+        },
+      });
+    } catch (geminiErr: any) {
+      console.error('[OCR Gemini Error]', geminiErr);
+      const mapped = mapGeminiError(geminiErr);
+      return res.status(mapped.status).json({ error: mapped.message });
+    }
 
-    const jsonStr = (response.text || '').trim();
-    if (!jsonStr) {
+    const rawResponseText = (response.text || '').trim();
+    if (!rawResponseText) {
       return res
         .status(502)
         .json({ error: 'Mesin OCR tidak mengembalikan hasil pembacaan struk.' });
     }
 
-    const parsed = JSON.parse(jsonStr);
+    const jsonCleaned = rawResponseText
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(jsonCleaned);
+    } catch {
+      const objMatch = jsonCleaned.match(/\{[\s\S]*\}/);
+      if (objMatch) {
+        try {
+          parsed = JSON.parse(objMatch[0]);
+        } catch {
+          parsed = null;
+        }
+      }
+      if (!parsed) {
+        return res.status(502).json({
+          error: 'Hasil pembacaan OCR tidak berformat JSON yang valid. Silakan klik "Scan Ulang".',
+        });
+      }
+    }
+
     const rawText = String(parsed.rawText || '').trim();
     const items = Array.isArray(parsed.items)
-      ? parsed.items.map((item: any) => {
-          const qty = Number(item.qty || 1);
-          const price = Math.round(Number(item.price || 0));
-          const total = Math.round(Number(item.total || qty * price));
-          return {
-            name: String(item.name || 'Item Struk'),
-            qty: qty > 0 ? qty : 1,
-            price,
-            total,
-          };
-        })
+      ? parsed.items
+          .map((item: any) => {
+            const qty = parseNumericToken(item?.qty) || 1;
+            const price = Math.round(parseNumericToken(item?.price));
+            const rawTotal = Math.round(parseNumericToken(item?.total));
+            const total = rawTotal > 0 ? rawTotal : Math.round(qty * price);
+            return {
+              name: String(item?.name || 'Item Struk').trim(),
+              qty: qty > 0 ? qty : 1,
+              price: price > 0 ? price : Math.round(total / (qty > 0 ? qty : 1)),
+              total,
+            };
+          })
+          .filter((i: any) => i.name || i.total > 0)
       : [];
 
-    const detectedNumbers = Array.isArray(parsed.detectedNumbers)
-      ? parsed.detectedNumbers.map((dn: any) => ({
-          label: String(dn.label || 'Nominal'),
-          rawToken: String(dn.rawToken || String(dn.value || '0')),
-          value: Number(dn.value || 0),
-        }))
+    let detectedNumbers = Array.isArray(parsed.detectedNumbers)
+      ? parsed.detectedNumbers
+          .map((dn: any) => {
+            const val = parseNumericToken(dn?.value ?? dn?.rawToken);
+            return {
+              label: String(dn?.label || 'Nominal').trim(),
+              rawToken: String(dn?.rawToken || String(val)).trim(),
+              value: val,
+            };
+          })
+          .filter((dn: any) => dn.rawToken && (dn.value > 0 || /\d/.test(dn.rawToken)))
       : [];
+
+    if (detectedNumbers.length === 0 && rawText) {
+      detectedNumbers = extractNumbersFromRawText(rawText);
+    }
 
     const computedSum = items.reduce((s: number, i: any) => s + Number(i.total || 0), 0);
-    const totalAmount = Math.round(Number(parsed.totalAmount || 0)) || computedSum;
+    const parsedTotal = Math.round(parseNumericToken(parsed.totalAmount));
+    const maxDetectedValue = detectedNumbers.reduce(
+      (max: number, dn: any) => (dn.value > max ? Math.round(dn.value) : max),
+      0
+    );
+    const totalAmount = parsedTotal || computedSum || maxDetectedValue;
 
-    if (!rawText && items.length === 0 && totalAmount <= 0) {
+    if (!rawText && items.length === 0 && detectedNumbers.length === 0 && totalAmount <= 0) {
       return res.status(422).json({
         error:
-          'Tidak ada teks maupun angka harga yang dapat dideteksi pada gambar ini. Pastikan foto nota jelas, tidak buram, dan memiliki pencahayaan yang baik.',
+          'Tidak ada teks maupun angka harga yang dapat dideteksi pada gambar ini. Pastikan foto nota jelas, terang, tidak terpotong, dan tidak buram.',
       });
     }
 
@@ -1056,20 +1288,24 @@ Aturan ketat:
       data: {
         rawText,
         detectedNumbers,
-        subtotal: Math.round(Number(parsed.subtotal || computedSum || totalAmount)),
-        taxAmount: Math.round(Number(parsed.taxAmount || 0)),
-        discountAmount: Math.round(Number(parsed.discountAmount || 0)),
-        merchantName: String(parsed.merchantName || 'Toko / Merchant'),
+        subtotal: Math.round(parseNumericToken(parsed.subtotal)) || computedSum || totalAmount,
+        taxAmount: Math.round(parseNumericToken(parsed.taxAmount)),
+        discountAmount: Math.round(parseNumericToken(parsed.discountAmount)),
+        merchantName: String(parsed.merchantName || 'Toko / Merchant').trim(),
         date:
-          parsed.date && /^\d{4}-\d{2}-\d{2}$/.test(parsed.date)
-            ? parsed.date
+          parsed.date && /^\d{4}-\d{2}-\d{2}$/.test(String(parsed.date))
+            ? String(parsed.date)
             : new Date().toISOString().split('T')[0],
         totalAmount,
         category: parsed.category || 'Belanja Bahan Baku',
         paymentMethod: parsed.paymentMethod || 'Tunai',
         referenceNo: parsed.referenceNo || 'OCR-' + Math.floor(100000 + Math.random() * 900000),
         items,
-        confidenceScore: Number(parsed.confidenceScore || 0.92),
+        confidenceScore: (() => {
+          const c = Number(parsed.confidenceScore || 0.92);
+          if (!Number.isFinite(c) || c <= 0) return 0.9;
+          return c > 1 ? Math.min(1, c / 100) : Math.min(1, c);
+        })(),
         summaryNotes:
           parsed.summaryNotes || 'Teks dan angka harga berhasil diekstrak dari gambar struk.',
       },
@@ -1395,15 +1631,19 @@ app.post(
         .map((m) => `${m.sender === 'user' ? 'Pengguna' : m.senderName}: ${m.text}`)
         .join('\n');
 
-      const aiRes = await ai.models.generateContent({
-        model: 'gemini-4-hydrogen',
-        contents: `Riwayat singkat percakapan:\n${conversationHistory}\n\nPertanyaan terbaru pengguna (${thread.guestName}): "${cleanMessage}"`,
-        config: {
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-          systemInstruction:
-            'Anda adalah AI Asisten Manajemen Keuangan UMKM untuk aplikasi FinSight UMKM. Tugas Anda menjawab pertanyaan pengguna tentang tata cara pengelolaan keuangan usaha (pemisahan kas pribadi & usaha, arus kas, HPP & margin, pencatatan harian, kesiapan KUR) serta cara menggunakan fitur FinSight (Kasir POS Katalog Produk, Scan Nota OCR Teks & Angka, Analisis Kesehatan Usaha 1 Bulan/Triwulan/Setengah Tahun/1 Tahun, Laporan Laba Rugi, Neraca, Buku Besar SAK EMKM, dan Ekspor Excel .XLSX). Jawablah dalam Bahasa Indonesia yang jelas, terstruktur, praktis, ramah, dan ringkas (maksimal 3-4 paragraf/poin pendek). Jika pengguna menanyakan lupa kata sandi atau reset password, sampaikan untuk mengetik kendala password agar otomatis diarahkan ke Admin FinSight.',
-        },
-      });
+      let aiRes;
+      try {
+        aiRes = await generateGeminiWithRetry(ai, {
+          contents: `Riwayat singkat percakapan:\n${conversationHistory}\n\nPertanyaan terbaru pengguna (${thread.guestName}): "${cleanMessage}"`,
+          config: {
+            systemInstruction:
+              'Anda adalah AI Asisten Manajemen Keuangan UMKM untuk aplikasi FinSight UMKM. Tugas Anda menjawab pertanyaan pengguna tentang tata cara pengelolaan keuangan usaha (pemisahan kas pribadi & usaha, arus kas, HPP & margin, pencatatan harian, kesiapan KUR) serta cara menggunakan fitur FinSight (Kasir POS Katalog Produk, Scan Nota OCR Teks & Angka, Analisis Kesehatan Usaha 1 Bulan/Triwulan/Setengah Tahun/1 Tahun, Laporan Laba Rugi, Neraca, Buku Besar SAK EMKM, dan Ekspor Excel .XLSX). Jawablah dalam Bahasa Indonesia yang jelas, terstruktur, praktis, ramah, dan ringkas (maksimal 3-4 paragraf/poin pendek). Jika pengguna menanyakan lupa kata sandi atau reset password, sampaikan untuk mengetik kendala password agar otomatis diarahkan ke Admin FinSight.',
+          },
+        });
+      } catch (geminiErr: any) {
+        const mapped = mapGeminiError(geminiErr);
+        return res.status(mapped.status).json({ error: mapped.message });
+      }
 
       const generated = (aiRes.text || '').trim();
       if (!generated) {

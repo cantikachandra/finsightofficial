@@ -147,3 +147,6 @@ ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.support_chats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.magic_links ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.password_resets ENABLE ROW LEVEL SECURITY;
+
+-- Segarkan cache skema PostgREST agar tabel langsung terbaca oleh API
+NOTIFY pgrst, 'reload schema';
