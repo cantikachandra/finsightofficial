@@ -20,6 +20,7 @@ import { AdminUserFinancialSummary, SupportChatThread, User } from '../types';
 import { formatRupiah } from '../utils/exportReport';
 import { checkPasswordStrength } from '../utils/password';
 import { FundingReadyReportModal } from './FundingReadyReportModal';
+import { parseApiResponse } from '../utils/api';
 
 interface AdminDashboardProps {
   adminUser: User;
@@ -58,7 +59,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ adminUser }) => 
     setErrorMsg(null);
     try {
       const res = await fetch(`/api/admin/overview?adminId=${encodeURIComponent(adminUser.id)}`);
-      const data = await res.json();
+      const data = await parseApiResponse(res);
       if (!res.ok) {
         throw new Error(data.error || 'Gagal memuat data Admin.');
       }
@@ -129,7 +130,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ adminUser }) => 
           newPassword: newPasswordInput,
         }),
       });
-      const data = await res.json();
+      const data = await parseApiResponse(res);
       if (!res.ok) throw new Error(data.error || 'Gagal memperbarui kata sandi.');
 
       setActionMsg(data.message);
@@ -174,7 +175,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ adminUser }) => 
           resolve,
         }),
       });
-      const data = await res.json();
+      const data = await parseApiResponse(res);
       if (!res.ok) throw new Error(data.error || 'Gagal mengirim balasan.');
 
       setReplyText('');

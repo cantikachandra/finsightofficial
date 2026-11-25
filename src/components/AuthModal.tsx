@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Mail, Lock, User as UserIcon, Store, MapPin, Phone, ArrowRight, ShieldCheck, AlertCircle, X, CheckCircle2, Sparkles, RefreshCw } from 'lucide-react';
 import { User } from '../types';
 import { checkPasswordStrength } from '../utils/password';
+import { parseApiResponse } from '../utils/api';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -62,7 +63,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         }),
       });
 
-      const data = await res.json();
+      const data = await parseApiResponse(res);
       if (!res.ok) {
         throw new Error(data.error || 'Pendaftaran gagal');
       }
@@ -104,7 +105,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         }),
       });
 
-      const data = await res.json();
+      const data = await parseApiResponse(res);
       if (!res.ok) {
         throw new Error(data.error || 'Kode verifikasi tidak cocok.');
       }
@@ -128,7 +129,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
       });
-      const data = await res.json();
+      const data = await parseApiResponse(res);
       if (!res.ok) throw new Error(data.error || 'Gagal mengirim ulang kode');
 
       setSuccessMsg(`Kode baru telah dikirim dari ${data.senderEmail || 'finsight.offc@gmail.com'}.`);
@@ -156,7 +157,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await res.json();
+      const data = await parseApiResponse(res);
       if (!res.ok) {
         throw new Error(data.error || 'Email atau password salah.');
       }

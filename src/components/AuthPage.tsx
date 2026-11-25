@@ -20,6 +20,7 @@ import {
 import { User } from '../types';
 import { SupportChatbotWidget } from './SupportChatbotWidget';
 import { checkPasswordStrength } from '../utils/password';
+import { parseApiResponse } from '../utils/api';
 
 // Official FinSight Logo & Real Authentic Financial Photography
 import finSightLogo from '/assets/aistudio/Logo_FinSight_Biru_Mengilap_c4e93b1f.png';
@@ -101,7 +102,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
         }),
       });
 
-      const data = await res.json();
+      const data = await parseApiResponse(res);
       if (!res.ok) {
         throw new Error(data.error || 'Gagal masuk. Periksa kembali email dan kata sandi Anda.');
       }
@@ -160,7 +161,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
         }),
       });
 
-      const data = await res.json();
+      const data = await parseApiResponse(res);
       if (!res.ok) {
         throw new Error(data.error || 'Pendaftaran gagal.');
       }
@@ -193,7 +194,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
         body: JSON.stringify({ email: forgotEmail.trim() }),
       });
 
-      const data = await res.json();
+      const data = await parseApiResponse(res);
       if (!res.ok) {
         throw new Error(data.error || 'Gagal mengirim link konfirmasi reset kata sandi.');
       }
@@ -248,7 +249,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
         }),
       });
 
-      const data = await res.json();
+      const data = await parseApiResponse(res);
       if (!res.ok) {
         throw new Error(data.error || 'Gagal memperbarui kata sandi.');
       }
