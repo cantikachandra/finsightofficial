@@ -1,7 +1,7 @@
 import path from 'node:path';
 import dotenv from 'dotenv';
 import express from 'express';
-import app from './src/server/app';
+import app from './src/server/app.js';
 
 dotenv.config();
 

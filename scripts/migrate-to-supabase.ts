@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
-import { getInitialSeedData, type DbSchema } from '../src/lib/seedData.ts';
+import { getInitialSeedData, type DbSchema } from '../src/lib/seedData.js';
 
 dotenv.config();
 
