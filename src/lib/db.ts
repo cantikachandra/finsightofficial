@@ -5,14 +5,14 @@ import type {
   SupportChatMessage,
   SupportChatThread,
   Transaction,
-} from '../types/index.ts';
+} from '../types/index';
 import {
   getInitialSeedData,
   type DbEmailVerification,
   type DbSchema,
   type DbTokenRecord,
   type DbUser,
-} from './seedData.ts';
+} from './seedData';
 
 export class DatabaseConfigError extends Error {
   statusCode: number;

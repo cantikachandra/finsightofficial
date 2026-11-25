@@ -3,7 +3,7 @@ import type {
   ProductItem,
   SupportChatThread,
   Transaction,
-} from '../types/index.ts';
+} from '../types/index';
 
 export interface DbUser {
   id: string;

@@ -1,8 +1,8 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import nodemailer from 'nodemailer';
-import * as db from '../lib/db.ts';
-import { DatabaseConfigError } from '../lib/db.ts';
+import * as db from '../lib/db';
+import { DatabaseConfigError } from '../lib/db';
 
 const app = express();
 
