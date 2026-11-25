@@ -268,7 +268,7 @@ function mapGeminiError(err: any): { status: number; message: string } {
     return {
       status: 503,
       message:
-        'Server AI Gemini sedang mengalami lonjakan trafik sementara (503). Silakan klik "Scan Ulang" beberapa detik lagi.',
+        'Server AI Gemini sedang mengalami lonjakan trafik sementara (503). Silakan coba beberapa detik lagi atau gunakan Scan Offline (OCR Lokal) untuk nota.',
     };
   }
 

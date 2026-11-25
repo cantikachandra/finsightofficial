@@ -20,6 +20,7 @@ import {
 import { ProductItem, Transaction, TransactionItem } from '../types';
 import { formatRupiah } from '../utils/exportReport';
 import { playIncomeSound, sendBrowserNotification } from '../utils/notification';
+import { parseApiResponse } from '../utils/api';
 
 interface CashierPOSViewProps {
   userId: string;
@@ -47,6 +48,8 @@ export const CashierPOSView: React.FC<CashierPOSViewProps> = ({
   const [cashReceived, setCashReceived] = useState<number | ''>('');
   const [customerNote, setCustomerNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [lastReceipt, setLastReceipt] = useState<{
     referenceNo: string;
@@ -176,7 +179,7 @@ export const CashierPOSView: React.FC<CashierPOSViewProps> = ({
         }),
       });
 
-      const data = await res.json();
+      const data = await parseApiResponse(res);
       if (!res.ok) {
         throw new Error(data.error || 'Gagal mencatat transaksi kasir.');
       }
@@ -204,6 +207,27 @@ export const CashierPOSView: React.FC<CashierPOSViewProps> = ({
       setErrorMsg(err.message || 'Terjadi kesalahan saat menyimpan transaksi kasir.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDeleteProduct = async (productId: string) => {
+    setDeletingProductId(productId);
+    setErrorMsg(null);
+    try {
+      const res = await fetch(`/api/products/${encodeURIComponent(productId)}`, {
+        method: 'DELETE',
+      });
+      const data = await parseApiResponse(res);
+      if (!res.ok) {
+        throw new Error(data.error || 'Gagal menghapus produk dari katalog.');
+      }
+      setCart((prev) => prev.filter((c) => c.product.id !== productId));
+      setConfirmDeleteId(null);
+      onTransactionSaved();
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Gagal menghapus produk dari katalog.');
+    } finally {
+      setDeletingProductId(null);
     }
   };
 
@@ -241,7 +265,7 @@ export const CashierPOSView: React.FC<CashierPOSViewProps> = ({
             className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             <Package className="w-4 h-4" />
-            <span>+ Produk Katalog</span>
+            <span>Kelola Katalog</span>
           </button>
 
           <button
@@ -327,11 +351,20 @@ export const CashierPOSView: React.FC<CashierPOSViewProps> = ({
               {filteredProducts.map((product) => {
                 const inCart = cart.find((c) => c.product.id === product.id);
                 const outOfStock = Number(product.stock || 0) <= 0;
+                const isConfirmingDelete = confirmDeleteId === product.id;
+                const isDeleting = deletingProductId === product.id;
                 return (
-                  <button
+                  <div
                     key={product.id}
-                    type="button"
                     onClick={() => addToCart(product)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        addToCart(product);
+                      }
+                    }}
                     className={`text-left p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-3 ${
                       inCart
                         ? 'bg-blue-50/70 dark:bg-blue-950/40 border-blue-500 ring-2 ring-blue-500/20'
@@ -343,11 +376,48 @@ export const CashierPOSView: React.FC<CashierPOSViewProps> = ({
                         <h4 className="font-bold text-sm text-slate-900 dark:text-white leading-snug">
                           {product.name}
                         </h4>
-                        {inCart && (
-                          <span className="px-2 py-0.5 rounded-md bg-blue-600 text-white text-xs font-bold font-mono shrink-0">
-                            {inCart.qty}x
-                          </span>
-                        )}
+                        <div className="flex items-center gap-1 shrink-0">
+                          {inCart && (
+                            <span className="px-2 py-0.5 rounded-md bg-blue-600 text-white text-xs font-bold font-mono">
+                              {inCart.qty}x
+                            </span>
+                          )}
+                          {isConfirmingDelete ? (
+                            <div
+                              className="flex items-center gap-1"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                type="button"
+                                disabled={isDeleting}
+                                onClick={() => handleDeleteProduct(product.id)}
+                                className="px-2 py-0.5 rounded bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-[10px] font-bold cursor-pointer"
+                              >
+                                {isDeleting ? '...' : 'Hapus'}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isDeleting}
+                                onClick={() => setConfirmDeleteId(null)}
+                                className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-[10px] font-semibold cursor-pointer"
+                              >
+                                Batal
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setConfirmDeleteId(product.id);
+                              }}
+                              title="Hapus item dari katalog"
+                              className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <div className="text-[11px] text-slate-500 dark:text-slate-400">
                         {product.category || 'Umum'} &middot; Stok:{' '}
@@ -366,7 +436,7 @@ export const CashierPOSView: React.FC<CashierPOSViewProps> = ({
                         Pilih
                       </span>
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>

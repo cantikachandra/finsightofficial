@@ -10,6 +10,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { SupportChatThread, User } from '../types';
+import { parseApiResponse } from '../utils/api';
 
 interface SupportChatbotWidgetProps {
   user?: User | null;
@@ -100,7 +101,7 @@ export const SupportChatbotWidget: React.FC<SupportChatbotWidgetProps> = ({ user
           message: content,
         }),
       });
-      const data = await res.json();
+      const data = await parseApiResponse(res);
       if (!res.ok) {
         throw new Error(data.error || 'Gagal mengirim pesan.');
       }
@@ -111,7 +112,7 @@ export const SupportChatbotWidget: React.FC<SupportChatbotWidgetProps> = ({ user
       }
       if (!textOverride) setInputMsg('');
     } catch (err: any) {
-      setErrorMsg(err.message);
+      setErrorMsg(err?.message || 'Gagal mengirim pesan.');
     } finally {
       setSending(false);
     }
